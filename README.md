@@ -1,90 +1,71 @@
 # mto-explorer
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+Explorador de los maestros de infraestructura de MTO (`lov-master.xlsx` y `profile-master.xlsx`),
+hecho con **Quarkus** para aprenderlo con datos reales.
 
-If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
+**No depende del ecosistema MTO**: no habla con `mto-configuration`, ni con RabbitMQ, ni con
+Keycloak. Lee los mismos Excel que genera `mto-configuration/data/tools` y los sirve para
+consultarlos.
 
-## Running the application in dev mode
+## Requisitos
 
-You can run your application in dev mode that enables live coding using:
+- Java 21 o superior.
+- Docker arrancado: Dev Services levanta PostgreSQL y Redis en desarrollo y en los tests.
+- Nada más: Maven viene con el wrapper (`./mvnw`).
 
-```shell script
-./mvnw quarkus:dev
+## Arrancar
+
+```bash
+MTO_DATA_DIR=/ruta/a/mto-configuration/data ./mvnw quarkus:dev
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+- Dev UI: <http://localhost:8090/q/dev-ui>
+- Swagger UI: <http://localhost:8090/q/swagger-ui>
+- Salud: <http://localhost:8090/q/health>
 
-## Packaging and running the application
+Tests: `./mvnw verify`.
 
-The application can be packaged using:
+## Los datos no van al repositorio
 
-```shell script
-./mvnw package
+Los maestros son de ingeniería. El `.gitignore` excluye cualquier `.xlsx`, y la aplicación los lee
+de la carpeta de `MTO_DATA_DIR`. Los tests usan unos maestros pequeños e inventados
+(`src/test/java/.../load/MasterFixtures.java`).
+
+## Plan
+
+Cada fase deja algo funcionando y con tests. La guía de cada una, paso a paso, está en `docs/`.
+
+| Fase | Qué | Qué se aprende | Guía |
+|---|---|---|---|
+| 1 | Cargar los Excel en PostgreSQL y servirlos por REST | Dev Services, `@ConfigMapping`, Flyway, Panache reactivo, Mutiny (`Uni`), REST, validación, OpenAPI, `@QuarkusTest` | [fase-1.md](docs/fase-1.md) |
+| 2 | Caché en Redis y streaming con `Multi` | `@CacheResult`, invalidación, `Multi`, SSE | pendiente |
+| 3 | Servicio gRPC (unario y streaming) y cliente | `.proto`, `@GrpcService`, stubs Mutiny, `grpcurl` | pendiente |
+| 4 | Recargar cuando cambia un Excel; foto diaria de calidad | `@Scheduled`, cron, ejecución concurrente | pendiente |
+| 5 | Asistente para preguntar por los maestros en lenguaje natural | LangChain4j, `@RegisterAiService`, `@Tool`, Ollama en local | pendiente |
+
+Las dependencias de todas las fases ya están en el `pom.xml`. LangChain4j está apagado en
+`application.yml` hasta la fase 5.
+
+## Estructura
+
+```
+src/main/java/com/alejandro/mtoexplorer/
+├── config/   fase 1 · configuración tipada (mto.*)
+├── kp/       fase 1 · puntos kilométricos (17858.5 ↔ 17+858.5)
+├── entity/   fase 1 · entidades Panache reactivas
+├── load/     fase 1 · lectura de Excel y carga
+├── api/      fase 1 · recursos REST y DTOs
+├── grpc/     fase 3 · servicios gRPC (los .proto van en src/main/proto)
+├── jobs/     fase 4 · tareas programadas
+└── ai/       fase 5 · asistente LangChain4j
+src/main/resources/db/migration/   migraciones Flyway
+docs/maestros.md                   hojas y columnas de los maestros
 ```
 
-It produces the `quarkus-run.jar` file in the `target/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/quarkus-app/lib/` directory.
+## Imagen nativa
 
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
-
-If you want to build an _über-jar_, execute the following command:
-
-```shell script
-./mvnw package -Dquarkus.package.jar.type=uber-jar
-```
-
-The application, packaged as an _über-jar_, is now runnable using `java -jar target/*-runner.jar`.
-
-## Creating a native executable
-
-You can create a native executable using:
-
-```shell script
-./mvnw package -Dnative
-```
-
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
-
-```shell script
+```bash
 ./mvnw package -Dnative -Dquarkus.native.container-build=true
 ```
 
-You can then execute your native executable with: `./target/mto-explorer-1.0-SNAPSHOT-runner`
-
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
-
-## Related Guides
-
-- Mutiny ([guide](https://quarkus.io/guides/mutiny-primer)): Write reactive applications with the modern Reactive
-  Programming library Mutiny
-- REST ([guide](https://quarkus.io/guides/rest)): Build RESTful web services and APIs using Jakarta REST (formerly
-  JAX-RS)
-- Hibernate Validator ([guide](https://quarkus.io/guides/validation)): Bean validation using Hibernate Validator and
-  Jakarta Validation annotations
-- YAML Configuration ([guide](https://quarkus.io/guides/config-yaml)): Use YAML to configure your Quarkus application
-- Redis Cache ([guide](https://quarkus.io/guides/cache-redis-reference)): Use Redis as the caching backend
-- Reactive PostgreSQL client ([guide](https://quarkus.io/guides/reactive-sql-clients)): Connect to the PostgreSQL
-  database using the reactive pattern
-- Cache ([guide](https://quarkus.io/guides/cache)): Enable application data caching in CDI beans
-
-## Provided Code
-
-### YAML Config
-
-Configure your application with YAML
-
-[Related guide section...](https://quarkus.io/guides/config-reference#configuration-examples)
-
-The Quarkus application configuration is located in `src/main/resources/application.yml`.
-
-### gRPC
-
-Create your first gRPC service
-
-[Related guide section...](https://quarkus.io/guides/grpc-getting-started)
-
-### REST
-
-Easily start your REST Web Services
-
-[Related guide section...](https://quarkus.io/guides/getting-started-reactive#reactive-jax-rs-resources)
+Los `Dockerfile` de `src/main/docker` los generó code.quarkus.io.
