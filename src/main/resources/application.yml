@@ -1,2 +1,70 @@
-greeting:
-  message: "hello"
+# ------------------------------------------------------------------------------
+# Propias de la aplicación (las leerás con un @ConfigMapping(prefix = "mto")).
+# Los maestros reales NO van al repo: se leen de la carpeta MTO_DATA_DIR.
+#   MTO_DATA_DIR=/ruta/a/mto-configuration/data ./mvnw quarkus:dev
+# ------------------------------------------------------------------------------
+mto:
+  data-dir: ${MTO_DATA_DIR:}
+  lov-file: lov-master.xlsx
+  profile-file: profile-master.xlsx
+  load-on-startup: true
+
+quarkus:
+  http:
+    port: 8090
+    test-port: 0
+
+  # --- Base de datos -----------------------------------------------------------
+  # En dev y test no hace falta nada: Dev Services levanta PostgreSQL en Docker y
+  # configura los dos accesos (el reactivo para la aplicación y el JDBC para Flyway).
+  datasource:
+    db-kind: postgresql
+
+  flyway:
+    migrate-at-start: true
+
+  hibernate-orm:
+    # El esquema es de Flyway (src/main/resources/db/migration); Hibernate solo lo comprueba.
+    schema-management:
+      strategy: validate
+    # Nombres en snake_case: sortOrder -> sort_order.
+    physical-naming-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+
+  # --- Caché (fase 2) ------------------------------------------------------------
+  # Dev Services levanta Redis. Cada @CacheResult(cacheName = "...") usa Redis.
+  cache:
+    type: redis
+
+  # --- gRPC (fase 3) -------------------------------------------------------------
+  # El servidor gRPC comparte el puerto HTTP (8090) en vez de abrir el 9000.
+  grpc:
+    server:
+      use-separate-server: false
+
+  # --- LangChain4j (fase 5) ------------------------------------------------------
+  # Apagado hasta la fase 5: si no, Dev Services descargaría un modelo de varios GB al arrancar.
+  langchain4j:
+    devservices:
+      enabled: false
+    ollama:
+      devservices:
+        enabled: false
+
+  # --- OpenAPI -------------------------------------------------------------------
+  smallrye-openapi:
+    info-title: mto-explorer
+  swagger-ui:
+    always-include: true
+
+# --- Producción ------------------------------------------------------------------
+"%prod":
+  quarkus:
+    datasource:
+      username: ${DB_USER:mto_explorer}
+      password: ${DB_PASSWORD:mto_explorer}
+      reactive:
+        url: ${DB_REACTIVE_URL:postgresql://localhost:5432/mto_explorer}
+      jdbc:
+        url: ${DB_JDBC_URL:jdbc:postgresql://localhost:5432/mto_explorer}
+    redis:
+      hosts: ${REDIS_URL:redis://localhost:6379}
