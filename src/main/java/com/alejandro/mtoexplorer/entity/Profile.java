@@ -2,7 +2,12 @@ package com.alejandro.mtoexplorer.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Hoja PROFILES de profile-master.xlsx: un poste o pórtico de una vía.
@@ -40,4 +45,13 @@ public class Profile extends BaseEntity {
     public boolean toReview;
     public String sourceSheet;
     public Integer sourceRow;
+
+    /**
+     * Sus ménsulas, por posición. {@code mappedBy}: la clave foránea es de la ménsula
+     * ({@link Cantilever#profile}); esta lista es el otro lado de la misma relación y no escribe nada.
+     * Las colecciones son LAZY por defecto: se cargan con {@code Mutiny.fetch(profile.cantilevers)}.
+     */
+    @OneToMany(mappedBy = "profile")
+    @OrderBy("slot")
+    public List<Cantilever> cantilevers = new ArrayList<>();
 }

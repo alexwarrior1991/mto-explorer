@@ -1,6 +1,8 @@
 package com.alejandro.mtoexplorer.entity;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 /** Hoja CANTILEVERS de profile-master.xlsx: una ménsula de un perfil (un perfil puede tener varias). */
@@ -8,11 +10,13 @@ import jakarta.persistence.Table;
 @Table(name = "cantilever")
 public class Cantilever extends BaseEntity {
 
-    public String ep;
-    public String track;
-    public String profileId;
-    /** El ORDEN del perfil al que pertenece. */
-    public int profileOrder;
+    /**
+     * El perfil del que cuelga. LAZY: no se carga al leer la ménsula. En Hibernate Reactive eso
+     * significa que acceder a {@code profile.kp} sin haberlo cargado antes falla; hay que pedirlo
+     * (un {@code join fetch} en la consulta o {@code Mutiny.fetch}).
+     */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    public Profile profile;
     public int slot;
     public String type;
     public Double stagger;

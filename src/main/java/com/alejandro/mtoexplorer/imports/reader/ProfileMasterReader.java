@@ -14,7 +14,9 @@ import com.alejandro.mtoexplorer.imports.excel.SheetRow;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Lee profile-master.xlsx: una hoja por método. */
 @ApplicationScoped
@@ -24,12 +26,13 @@ public class ProfileMasterReader implements MasterReader<ProfileMaster> {
 
     @Override
     public ProfileMaster read(MasterWorkbook workbook) {
+        List<Profile> profiles = profiles(workbook);
         return new ProfileMaster(
                 executionPackages(workbook),
                 stations(workbook),
                 tracks(workbook),
-                profiles(workbook),
-                cantilevers(workbook),
+                profiles,
+                cantilevers(workbook, byTrackAndOrder(profiles)),
                 disconnectors(workbook),
                 sectionInsulators(workbook),
                 switches(workbook),
@@ -111,14 +114,35 @@ public class ProfileMasterReader implements MasterReader<ProfileMaster> {
         return profiles;
     }
 
-    private static List<Cantilever> cantilevers(MasterWorkbook workbook) {
+    /** La clave de un perfil en el maestro: paquete, vía y orden. PROFILE_ID no vale, se repite. */
+    private record ProfileKey(String ep, String track, int order) {
+    }
+
+    private static Map<ProfileKey, Profile> byTrackAndOrder(List<Profile> profiles) {
+        Map<ProfileKey, Profile> index = new HashMap<>();
+        for (Profile p : profiles) {
+            index.put(new ProfileKey(p.ep, p.track, p.sortOrder), p);
+        }
+        return index;
+    }
+
+    /**
+     * Cada ménsula apunta a su objeto {@link Profile}, no a su clave: al guardar, Hibernate escribe el
+     * id del perfil en la clave foránea. También se añade a {@code profile.cantilevers}, para que el
+     * modelo en memoria sea coherente por los dos lados de la relación.
+     */
+    private static List<Cantilever> cantilevers(MasterWorkbook workbook, Map<ProfileKey, Profile> profiles) {
         List<Cantilever> cantilevers = new ArrayList<>();
         workbook.forEachRow("CANTILEVERS", r -> {
+            ProfileKey key = new ProfileKey(r.string("EP"), r.string("VIA"), required(r.integer("ORDEN"), "ORDEN", r));
+            Profile profile = profiles.get(key);
+            if (profile == null) {
+                throw new MasterFormatException("ORDEN", r.rowNumber(), "la ménsula es de un perfil que no está en "
+                        + "PROFILES: " + key.ep() + " / " + key.track() + " / orden " + key.order());
+            }
             Cantilever c = new Cantilever();
-            c.ep = r.string("EP");
-            c.track = r.string("VIA");
-            c.profileId = r.string("PROFILE_ID");
-            c.profileOrder = required(r.integer("ORDEN"), "ORDEN", r);
+            c.profile = profile;
+            profile.cantilevers.add(c);
             c.slot = required(r.integer("SLOT"), "SLOT", r);
             c.type = r.string("CANTILEVER_TYPE");
             c.stagger = r.decimal("STAGGER");

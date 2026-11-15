@@ -2,7 +2,6 @@ package com.alejandro.mtoexplorer.service;
 
 import com.alejandro.mtoexplorer.config.ExplorerConfig;
 import com.alejandro.mtoexplorer.entity.Profile;
-import com.alejandro.mtoexplorer.repository.CantileverRepository;
 import com.alejandro.mtoexplorer.repository.ProfileRepository;
 import com.alejandro.mtoexplorer.service.exception.ResourceNotFoundException;
 import com.alejandro.mtoexplorer.service.model.Page;
@@ -14,6 +13,7 @@ import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
+import org.hibernate.reactive.mutiny.Mutiny;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -23,13 +23,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ProfileService {
 
     private final ProfileRepository profiles;
-    private final CantileverRepository cantilevers;
     /** Tamaño de cada página que pide el flujo de {@link #stream} (mto.stream-page-size). */
     private final int streamPageSize;
 
-    ProfileService(ProfileRepository profiles, CantileverRepository cantilevers, ExplorerConfig config) {
+    ProfileService(ProfileRepository profiles, ExplorerConfig config) {
         this.profiles = profiles;
-        this.cantilevers = cantilevers;
         this.streamPageSize = config.streamPageSize();
     }
 
@@ -41,13 +39,18 @@ public class ProfileService {
                 .chain(items -> query.count().map(total -> new Page<>(items, page, size, total)));
     }
 
+    /**
+     * El perfil con sus ménsulas. {@code profile.cantilevers} es LAZY y en Hibernate Reactive no se
+     * carga solo al tocarlo (fallaría con LazyInitializationException): {@code Mutiny.fetch} lo pide
+     * a la base de datos y devuelve un {@code Uni} con la lista ya cargada, por slot ({@code @OrderBy}).
+     */
     @WithSession
     public Uni<ProfileWithCantilevers> get(String ep, String track, int order) {
         return profiles.findByTrackAndOrder(ep, track, order)
                 .onItem().ifNull().failWith(() ->
                         new ResourceNotFoundException("el perfil", ep + " / " + track + " / " + order))
-                .chain(profile -> cantilevers.listByProfile(ep, track, order)
-                        .map(list -> new ProfileWithCantilevers(profile, list)));
+                .chain(profile -> Mutiny.fetch(profile.cantilevers)
+                        .map(cantilevers -> new ProfileWithCantilevers(profile, cantilevers)));
     }
 
     /**

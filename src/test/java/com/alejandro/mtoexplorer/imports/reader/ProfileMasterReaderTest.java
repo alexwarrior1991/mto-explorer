@@ -1,13 +1,22 @@
 package com.alejandro.mtoexplorer.imports.reader;
 
+import com.alejandro.mtoexplorer.entity.Cantilever;
 import com.alejandro.mtoexplorer.entity.Disconnector;
 import com.alejandro.mtoexplorer.entity.ExecutionPackage;
 import com.alejandro.mtoexplorer.entity.Profile;
 import com.alejandro.mtoexplorer.imports.MasterFixtures;
+import com.alejandro.mtoexplorer.imports.excel.MasterFormatException;
 import com.alejandro.mtoexplorer.imports.excel.MasterWorkbook;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
@@ -15,6 +24,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -68,6 +79,32 @@ class ProfileMasterReaderTest {
     }
 
     @Test
+    void eachCantileverPointsToItsProfileObjectAndTheProfileListsIt() {
+        ProfileMaster master = read(true);
+        // EP1 / TRACK 1: el perfil de orden 2 tiene dos ménsulas; el de orden 3 comparte PROFILE_ID y no tiene.
+        Profile second = master.profiles().get(1);
+        Profile third = master.profiles().get(2);
+
+        List<Cantilever> ofSecond = master.cantilevers().stream().filter(c -> c.profile == second).toList();
+        assertEquals(2, ofSecond.size());
+        assertEquals(ofSecond, second.cantilevers);
+        assertTrue(third.cantilevers.isEmpty());
+        // El mismo objeto, no una copia: es lo que Hibernate usa para escribir la clave foránea.
+        assertSame(second, second.cantilevers.getFirst().profile);
+    }
+
+    @Test
+    void aCantileverOfAMissingProfileFailsSayingWhichOne() throws IOException {
+        Path file = dir.resolve("profile-master.xlsx");
+        MasterFixtures.writeProfileMaster(file, true);
+        addRow(file, "CANTILEVERS", "EP1", "TRACK 1", "1-1.99", 99, 1, "EMT-1");
+
+        MasterFormatException e = assertThrows(MasterFormatException.class,
+                () -> reader.read(new MasterWorkbook(file)));
+        assertTrue(e.getMessage().contains("EP1 / TRACK 1 / orden 99"), e.getMessage());
+    }
+
+    @Test
     void disconnectorWithoutPoleKeepsItsOwnNegativeKpAndUnknownNormallyOpen() {
         Disconnector withoutPole = read(true).disconnectors().get(1);
 
@@ -86,6 +123,26 @@ class ProfileMasterReaderTest {
         assertTrue(master.disconnectors().isEmpty());
         assertTrue(master.sectionInsulators().isEmpty());
         assertTrue(master.switches().isEmpty());
+    }
+
+    /** Añade una fila al final de una hoja de un Excel ya escrito: números como número, el resto como texto. */
+    private static void addRow(Path file, String sheetName, Object... values) throws IOException {
+        XSSFWorkbook wb;
+        try (InputStream in = Files.newInputStream(file)) {
+            wb = new XSSFWorkbook(in);
+        }
+        try (wb; OutputStream out = Files.newOutputStream(file)) {
+            Sheet sheet = wb.getSheet(sheetName);
+            Row row = sheet.createRow(sheet.getLastRowNum() + 1);
+            for (int c = 0; c < values.length; c++) {
+                if (values[c] instanceof Number n) {
+                    row.createCell(c).setCellValue(n.doubleValue());
+                } else {
+                    row.createCell(c).setCellValue(String.valueOf(values[c]));
+                }
+            }
+            wb.write(out);
+        }
     }
 
     private ProfileMaster read(boolean withSectioning) {
