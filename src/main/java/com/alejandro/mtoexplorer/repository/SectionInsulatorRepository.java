@@ -1,8 +1,8 @@
 package com.alejandro.mtoexplorer.repository;
 
 import com.alejandro.mtoexplorer.entity.SectionInsulator;
+import com.alejandro.mtoexplorer.repository.support.QueryFilter;
 import io.quarkus.hibernate.reactive.panache.PanacheRepository;
-import io.quarkus.panache.common.Parameters;
 import io.quarkus.panache.common.Sort;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -15,8 +15,9 @@ public class SectionInsulatorRepository implements PanacheRepository<SectionInsu
     /** Los de un paquete, opcionalmente de una estación, por estación y KP. */
     public Uni<List<SectionInsulator>> search(String ep, String station) {
         Sort sort = Sort.by("station").and("kp").and("name");
-        return station == null
-                ? list("ep", sort, ep)
-                : list("ep = :ep and station = :station", sort, Parameters.with("ep", ep).and("station", station));
+        QueryFilter filter = QueryFilter.create()
+                .eq("ep", ep)
+                .eq("station", station);
+        return list(filter.hql(), sort, filter.params());
     }
 }

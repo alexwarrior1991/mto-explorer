@@ -2,13 +2,12 @@ package com.alejandro.mtoexplorer.repository;
 
 import com.alejandro.mtoexplorer.entity.UnrecognizedValue;
 import com.alejandro.mtoexplorer.repository.projection.EpCount;
+import com.alejandro.mtoexplorer.repository.support.QueryFilter;
 import io.quarkus.hibernate.reactive.panache.PanacheRepository;
-import io.quarkus.panache.common.Parameters;
 import io.quarkus.panache.common.Sort;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @ApplicationScoped
@@ -17,17 +16,10 @@ public class UnrecognizedValueRepository implements PanacheRepository<Unrecogniz
     /** Los valores de un maestro (LOV o PROFILE) y de un paquete; los dos filtros son opcionales. */
     public Uni<List<UnrecognizedValue>> search(String master, String ep) {
         Sort sort = Sort.by("master").and("ep").and("kind").and("value");
-        List<String> where = new ArrayList<>();
-        Parameters params = new Parameters();
-        if (master != null) {
-            where.add("master = :master");
-            params.and("master", master);
-        }
-        if (ep != null) {
-            where.add("ep = :ep");
-            params.and("ep", ep);
-        }
-        return where.isEmpty() ? listAll(sort) : list(String.join(" and ", where), sort, params);
+        QueryFilter filter = QueryFilter.create()
+                .eq("master", master)
+                .eq("ep", ep);
+        return filter.isEmpty() ? listAll(sort) : list(filter.hql(), sort, filter.params());
     }
 
     public Uni<Long> deleteByMaster(String master) {

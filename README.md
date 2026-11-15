@@ -64,7 +64,8 @@ Por capas: cada una solo conoce la de debajo.
              │
   repository/     consultas, un repositorio Panache por entidad
   ├── criteria/   filtros de búsqueda (ProfileSearch, LovSearch)
-  └── projection/ resultados de agregados (EpCount, LovFamilyCount)
+  ├── projection/ resultados de agregados (EpCount, LovFamilyCount)
+  └── support/    QueryFilter: el WHERE con filtros opcionales y sus parámetros
              │
   entity/         las tablas (BaseEntity + 11 entidades, sin lógica)
 
