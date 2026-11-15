@@ -24,6 +24,10 @@ class SectioningApiTest {
                 .body("name", contains("AAA-01", "NS-01"))
                 .body("[0].profileId", equalTo("1-1.01"))
                 .body("[0].poleKpText", equalTo("12+000"))
+                // Con estos dos se pide la ficha del poste: /api/profiles/EP1/TRACK 1/1.
+                .body("[0].poleTrack", equalTo("TRACK 1"))
+                .body("[0].poleOrder", is(1))
+                .body("[1].station", equalTo("SIN ESTACION"))
                 .body("[0].normallyOpen", is(false))
                 .body("[1].profileId", nullValue())
                 .body("[1].kpText", equalTo("-0+250"))
@@ -39,6 +43,9 @@ class SectioningApiTest {
         given().queryParam("ep", "EP1").queryParam("station", "AAA").get("/api/sectioning/disconnectors")
                 .then().statusCode(200)
                 .body("name", contains("AAA-01"));
+        given().queryParam("ep", "EP1").queryParam("station", "SIN ESTACION").get("/api/sectioning/disconnectors")
+                .then().statusCode(200)
+                .body("name", contains("NS-01"));
     }
 
     @Test

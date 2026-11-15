@@ -93,6 +93,11 @@ class ExplorerApiTest {
                 .body("cantilevers.slot", contains(1, 2))
                 .body("cantilevers[0].type", equalTo("EMT-TT"))
                 .body("cantilevers[0].stagger", is(-70.0f));
+        given().get("/api/profiles/EP1/TRACK 1/1")
+                .then().statusCode(200)
+                // El seccionador AAA-01 cuelga de este poste (Profile.disconnectors).
+                .body("disconnectors.name", contains("AAA-01"))
+                .body("disconnectors[0].function", equalTo("LoadB/NS"));
         given().get("/api/profiles/EP1/TRACK 1/3")
                 .then().statusCode(200)
                 .body("profileId", equalTo("1-1.02"))

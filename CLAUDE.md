@@ -22,6 +22,8 @@ MTO: no llama a `mto-configuration`, ni a RabbitMQ, ni a Keycloak; solo lee los 
   los servicios no devuelven DTO ni saben de HTTP (lanzan excepciones de negocio, que `api/error`
   convierte en problem+json); los repositorios no abren sesión. La importación lee en `imports/reader`
   (sin base de datos) y escribe en `imports/store` (una transacción por maestro).
+- **Relaciones LAZY** (README, «Relaciones»): en Hibernate Reactive no se cargan solas. Lo que lee un
+  DTO se trae con `join fetch` en la consulta del repositorio, o con `Mutiny.fetch` en el servicio.
 
 ## Comandos
 - `MTO_DATA_DIR=/ruta/a/mto-configuration/data ./mvnw quarkus:dev`

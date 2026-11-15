@@ -2,18 +2,17 @@ package com.alejandro.mtoexplorer.service;
 
 import com.alejandro.mtoexplorer.config.ExplorerConfig;
 import com.alejandro.mtoexplorer.entity.Profile;
-import com.alejandro.mtoexplorer.repository.CantileverRepository;
 import com.alejandro.mtoexplorer.repository.ProfileRepository;
 import com.alejandro.mtoexplorer.service.exception.ResourceNotFoundException;
 import com.alejandro.mtoexplorer.service.model.Page;
 import com.alejandro.mtoexplorer.repository.criteria.ProfileSearch;
-import com.alejandro.mtoexplorer.service.model.ProfileWithCantilevers;
+import com.alejandro.mtoexplorer.service.model.ProfileDetail;
 import io.quarkus.hibernate.reactive.panache.Panache;
-import io.quarkus.hibernate.reactive.panache.PanacheQuery;
 import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
+import org.hibernate.reactive.mutiny.Mutiny;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -23,31 +22,35 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ProfileService {
 
     private final ProfileRepository profiles;
-    private final CantileverRepository cantilevers;
     /** Tamaño de cada página que pide el flujo de {@link #stream} (mto.stream-page-size). */
     private final int streamPageSize;
 
-    ProfileService(ProfileRepository profiles, CantileverRepository cantilevers, ExplorerConfig config) {
+    ProfileService(ProfileRepository profiles, ExplorerConfig config) {
         this.profiles = profiles;
-        this.cantilevers = cantilevers;
         this.streamPageSize = config.streamPageSize();
     }
 
     @WithSession
     public Uni<Page<Profile>> search(ProfileSearch search, int page, int size) {
-        PanacheQuery<Profile> query = profiles.search(search);
         // Una sesión reactiva no admite dos consultas a la vez: primero la página, después el total.
-        return query.page(page, size).list()
-                .chain(items -> query.count().map(total -> new Page<>(items, page, size, total)));
+        return profiles.search(search).page(page, size).list()
+                .chain(items -> profiles.count(search).map(total -> new Page<>(items, page, size, total)));
     }
 
+    /**
+     * El perfil con sus ménsulas y sus seccionadores. Las dos colecciones son LAZY, y en Hibernate
+     * Reactive no se cargan solas al tocarlas (fallaría con LazyInitializationException):
+     * {@code Mutiny.fetch} las pide a la base de datos, una detrás de otra, y devuelve un {@code Uni}
+     * con cada lista ya cargada y ordenada por su {@code @OrderBy}.
+     */
     @WithSession
-    public Uni<ProfileWithCantilevers> get(String ep, String track, int order) {
+    public Uni<ProfileDetail> get(String ep, String track, int order) {
         return profiles.findByTrackAndOrder(ep, track, order)
                 .onItem().ifNull().failWith(() ->
                         new ResourceNotFoundException("el perfil", ep + " / " + track + " / " + order))
-                .chain(profile -> cantilevers.listByProfile(ep, track, order)
-                        .map(list -> new ProfileWithCantilevers(profile, list)));
+                .chain(profile -> Mutiny.fetch(profile.cantilevers)
+                        .chain(cantilevers -> Mutiny.fetch(profile.disconnectors)
+                                .map(disconnectors -> new ProfileDetail(profile, cantilevers, disconnectors))));
     }
 
     /**
