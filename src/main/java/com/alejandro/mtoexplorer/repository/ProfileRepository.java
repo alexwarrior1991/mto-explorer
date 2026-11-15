@@ -3,14 +3,13 @@ package com.alejandro.mtoexplorer.repository;
 import com.alejandro.mtoexplorer.entity.Profile;
 import com.alejandro.mtoexplorer.repository.projection.EpCount;
 import com.alejandro.mtoexplorer.repository.criteria.ProfileSearch;
+import com.alejandro.mtoexplorer.repository.support.QueryFilter;
 import io.quarkus.hibernate.reactive.panache.PanacheQuery;
 import io.quarkus.hibernate.reactive.panache.PanacheRepository;
-import io.quarkus.panache.common.Parameters;
 import io.quarkus.panache.common.Sort;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @ApplicationScoped
@@ -23,25 +22,13 @@ public class ProfileRepository implements PanacheRepository<Profile> {
 
     /** La consulta sin ejecutar, ordenada por vía y orden: quien la usa decide la página o el recuento. */
     public PanacheQuery<Profile> search(ProfileSearch search) {
-        List<String> where = new ArrayList<>(List.of("ep = :ep"));
-        Parameters params = Parameters.with("ep", search.ep());
-        if (search.track() != null) {
-            where.add("track = :track");
-            params.and("track", search.track());
-        }
-        if (search.kpFrom() != null) {
-            where.add("kp >= :kpFrom");
-            params.and("kpFrom", search.kpFrom());
-        }
-        if (search.kpTo() != null) {
-            where.add("kp <= :kpTo");
-            params.and("kpTo", search.kpTo());
-        }
-        if (search.toReview() != null) {
-            where.add("toReview = :toReview");
-            params.and("toReview", search.toReview());
-        }
-        return find(String.join(" and ", where), Sort.by("track").and("sortOrder"), params);
+        QueryFilter filter = QueryFilter.create()
+                .eq("ep", search.ep())
+                .eq("track", search.track())
+                .where("kp >= :kpFrom", "kpFrom", search.kpFrom())
+                .where("kp <= :kpTo", "kpTo", search.kpTo())
+                .eq("toReview", search.toReview());
+        return find(filter.hql(), Sort.by("track").and("sortOrder"), filter.params());
     }
 
     public Uni<Long> countByEp(String ep) {
