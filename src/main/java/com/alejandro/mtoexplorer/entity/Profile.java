@@ -2,6 +2,8 @@ package com.alejandro.mtoexplorer.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
@@ -11,14 +13,15 @@ import java.util.List;
 
 /**
  * Hoja PROFILES de profile-master.xlsx: un poste o pórtico de una vía.
- * PROFILE_ID se repite dentro de una vía; lo que identifica el perfil es (ep, track, sortOrder).
+ * PROFILE_ID se repite dentro de una vía; lo que identifica el perfil es (vía, sortOrder).
  */
 @Entity
 @Table(name = "profile")
 public class Profile extends BaseEntity {
 
-    public String ep;
-    public String track;
+    /** Su vía; el paquete es el de la vía ({@code track.executionPackage}). */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    public Track track;
     public String profileId;
     /**
      * Punto kilométrico en metros: 17858.5 es el 17+858.5. Puede ser negativo (antes del origen).
@@ -54,4 +57,9 @@ public class Profile extends BaseEntity {
     @OneToMany(mappedBy = "profile")
     @OrderBy("slot")
     public List<Cantilever> cantilevers = new ArrayList<>();
+
+    /** Los seccionadores que cuelgan de este poste (casi siempre ninguno o uno). */
+    @OneToMany(mappedBy = "pole")
+    @OrderBy("name")
+    public List<Disconnector> disconnectors = new ArrayList<>();
 }

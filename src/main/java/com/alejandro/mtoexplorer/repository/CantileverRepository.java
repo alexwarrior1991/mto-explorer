@@ -15,8 +15,9 @@ public class CantileverRepository implements PanacheRepository<Cantilever> {
     public Uni<List<EpCount>> countPerEp() {
         return getSession().chain(session -> session.createSelectionQuery("""
                         select new com.alejandro.mtoexplorer.repository.projection.EpCount(
-                            p.ep, count(c), sum(case when c.toReview then 1 else 0 end))
-                        from Cantilever c join c.profile p group by p.ep""", EpCount.class)
+                            e.code, count(c), sum(case when c.toReview then 1 else 0 end))
+                        from Cantilever c join c.profile p join p.track t join t.executionPackage e
+                        group by e.code""", EpCount.class)
                 .getResultList());
     }
 }

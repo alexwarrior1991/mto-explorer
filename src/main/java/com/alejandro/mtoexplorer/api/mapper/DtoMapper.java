@@ -11,6 +11,7 @@ import com.alejandro.mtoexplorer.api.dto.LovFamilyDto;
 import com.alejandro.mtoexplorer.api.dto.MasterLoadDto;
 import com.alejandro.mtoexplorer.api.dto.PageDto;
 import com.alejandro.mtoexplorer.api.dto.ProfileDetailDto;
+import com.alejandro.mtoexplorer.api.dto.ProfileDisconnectorDto;
 import com.alejandro.mtoexplorer.api.dto.ProfileSummaryDto;
 import com.alejandro.mtoexplorer.api.dto.SectionInsulatorDto;
 import com.alejandro.mtoexplorer.api.dto.StationDto;
@@ -23,25 +24,30 @@ import com.alejandro.mtoexplorer.entity.ExecutionPackage;
 import com.alejandro.mtoexplorer.entity.Lov;
 import com.alejandro.mtoexplorer.entity.MasterLoad;
 import com.alejandro.mtoexplorer.entity.Profile;
+import com.alejandro.mtoexplorer.entity.SectionInsulator;
 import com.alejandro.mtoexplorer.entity.SectionInsulatorSwitch;
 import com.alejandro.mtoexplorer.entity.Station;
 import com.alejandro.mtoexplorer.entity.Track;
 import com.alejandro.mtoexplorer.entity.UnrecognizedValue;
 import com.alejandro.mtoexplorer.imports.FileImportResult;
 import com.alejandro.mtoexplorer.kp.Kp;
+import com.alejandro.mtoexplorer.repository.DisconnectorRepository;
 import com.alejandro.mtoexplorer.repository.projection.LovFamilyCount;
 import com.alejandro.mtoexplorer.service.model.EpOverview;
 import com.alejandro.mtoexplorer.service.model.EpQuality;
-import com.alejandro.mtoexplorer.service.model.InsulatorWithSwitches;
 import com.alejandro.mtoexplorer.service.model.Page;
-import com.alejandro.mtoexplorer.service.model.ProfileWithCantilevers;
+import com.alejandro.mtoexplorer.service.model.ProfileDetail;
 
 import java.util.List;
 import java.util.function.Function;
 
 /**
  * De entidades y modelos de servicio a DTO. Todo el formato de presentación vive aquí: el PK como
- * "17+858.5", la tangente como "1:9", las listas que en el maestro son texto separado.
+ * "17+858.5", la tangente como "1:9", las relaciones como el nombre del padre.
+ *
+ * <p>Ojo: lee relaciones LAZY ({@code station.executionPackage.code}, {@code profile.track.name}…).
+ * Solo funciona porque las consultas de los repositorios las traen con {@code join fetch}; una
+ * relación sin cargar fallaría aquí con LazyInitializationException.
  *
  * <p>En un proyecto con muchas entidades esto lo generaría MapStruct (como en mto-configuration);
  * aquí, a mano, se ve qué hace cada conversión.
@@ -71,26 +77,29 @@ public final class DtoMapper {
     }
 
     public static StationDto toDto(Station s) {
-        return new StationDto(s.ep, s.name);
+        return new StationDto(s.executionPackage.code, s.name);
     }
 
     public static TrackDto toDto(Track t) {
-        return new TrackDto(t.ep, t.name, split(t.stations, "\\s*\\|\\s*"), t.enabled, t.sourceSheet);
+        return new TrackDto(t.executionPackage.code, t.name, t.stations.stream().map(s -> s.name).toList(),
+                t.enabled, t.sourceSheet);
     }
 
     public static ProfileSummaryDto toSummary(Profile p) {
-        return new ProfileSummaryDto(p.ep, p.track, p.sortOrder, p.profileId, p.kp, Kp.format(p.kp),
+        return new ProfileSummaryDto(p.track.executionPackage.code, p.track.name, p.sortOrder, p.profileId, p.kp, Kp.format(p.kp),
                 p.status, p.sectioning, p.poleType, p.foundation, p.span, p.toReview);
     }
 
-    public static ProfileDetailDto toDto(ProfileWithCantilevers detail) {
+    public static ProfileDetailDto toDto(ProfileDetail detail) {
         Profile p = detail.profile();
-        return new ProfileDetailDto(p.ep, p.track, p.sortOrder, p.profileId, p.kp, Kp.format(p.kp),
+        return new ProfileDetailDto(p.track.executionPackage.code, p.track.name, p.sortOrder, p.profileId, p.kp, Kp.format(p.kp),
                 p.status, p.sectioning, p.anchorage, p.anchorageFoundation, p.foundation, p.poleType,
                 p.portal, p.returnSupport, p.sectioningFeeding, p.supportType, p.assemblyConfiguration,
                 p.span, p.heightCantileverSupport, p.poleGaugeLocation, p.railPoleDistance,
                 p.enabled, p.toReview, p.sourceSheet, p.sourceRow,
-                toDtos(detail.cantilevers(), DtoMapper::toDto));
+                toDtos(detail.cantilevers(), DtoMapper::toDto),
+                toDtos(detail.disconnectors(), d -> new ProfileDisconnectorDto(d.name, d.function, d.onLoad,
+                        d.normallyOpen, d.enabled)));
     }
 
     public static CantileverDto toDto(Cantilever c) {
@@ -117,20 +126,25 @@ public final class DtoMapper {
     }
 
     public static DisconnectorDto toDto(Disconnector d) {
-        return new DisconnectorDto(d.ep, d.station, d.name, d.track, d.connectedTrack, d.profileId,
-                d.poleKp, Kp.format(d.poleKp), d.kp, Kp.format(d.kp), d.onLoad, d.normallyOpen,
-                d.driveType, d.function, d.enabled);
+        Profile pole = d.pole;
+        Double poleKp = pole == null ? null : pole.kp;
+        return new DisconnectorDto(d.executionPackage.code,
+                d.station == null ? DisconnectorRepository.NO_STATION : d.station.name,
+                d.name, name(d.track), name(d.connectedTrack),
+                pole == null ? null : pole.profileId, pole == null ? null : pole.track.name,
+                pole == null ? null : pole.sortOrder, poleKp, Kp.format(poleKp),
+                d.kp, Kp.format(d.kp), d.onLoad, d.normallyOpen, d.driveType, d.function, d.enabled);
     }
 
-    public static SectionInsulatorDto toDto(InsulatorWithSwitches iws) {
-        var i = iws.insulator();
-        return new SectionInsulatorDto(i.ep, i.station, i.name, i.kp, Kp.format(i.kp), i.installationType,
-                i.track, i.connectedTrack, i.enabled, toDtos(iws.switches(), DtoMapper::toDto));
+    public static SectionInsulatorDto toDto(SectionInsulator i) {
+        return new SectionInsulatorDto(i.station.executionPackage.code, i.station.name, i.name, i.kp,
+                Kp.format(i.kp), i.installationType, name(i.track), name(i.connectedTrack), i.enabled,
+                toDtos(i.switches, DtoMapper::toDto));
     }
 
     public static SwitchDto toDto(SectionInsulatorSwitch w) {
         return new SwitchDto(w.code, w.kp, Kp.format(w.kp), w.tangent,
-                w.tangent == null ? null : "1:" + w.tangent, w.track, w.enabled);
+                w.tangent == null ? null : "1:" + w.tangent, name(w.track), w.enabled);
     }
 
     public static MasterLoadDto toDto(MasterLoad l) {
@@ -139,6 +153,11 @@ public final class DtoMapper {
 
     public static ImportResultDto toDto(FileImportResult r) {
         return new ImportResultDto(r.file(), r.status().name(), r.rows(), r.durationMs(), r.detail());
+    }
+
+    /** El nombre de una vía opcional. */
+    private static String name(Track track) {
+        return track == null ? null : track.name;
     }
 
     private static List<String> split(String value, String separator) {

@@ -47,8 +47,8 @@ class ProfileRepositoryTest {
         ProfileSearch search = new ProfileSearch("EP1", null, 12000.0, 12100.0, null);
         asserter.assertThat(() -> Panache.withSession(() -> profiles.search(search).list()),
                 (List<Profile> found) -> assertEquals(List.of("TRACK 1/1", "TRACK 1/2", "TRACK 2/1"),
-                        found.stream().map(p -> p.track + "/" + p.sortOrder).toList()));
-        asserter.assertEquals(() -> Panache.withSession(() -> profiles.search(search).count()), 3L);
+                        found.stream().map(p -> p.track.name + "/" + p.sortOrder).toList()));
+        asserter.assertEquals(() -> Panache.withSession(() -> profiles.count(search)), 3L);
     }
 
     @Test

@@ -1,28 +1,35 @@
 package com.alejandro.mtoexplorer.entity;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 /**
- * Hoja DISCONNECTORS de profile-master.xlsx: un seccionador. Su clave natural es (ep, name).
- * Con poste, cuelga del perfil profileId (poleKp distingue dos postes con el mismo id); sin poste,
- * lleva su propio kp.
+ * Hoja DISCONNECTORS de profile-master.xlsx: un seccionador. Único por (paquete, nombre).
+ * Todas sus relaciones salvo el paquete son opcionales: puede no tener estación ("SIN ESTACION"),
+ * ni poste (los de pórtico de subestación), ni vía conectada.
  */
 @Entity
 @Table(name = "disconnector")
 public class Disconnector extends BaseEntity {
 
-    public String ep;
-    /** La estación, o "SIN ESTACION" si no es de ninguna. */
-    public String station;
-    /** La vía que maniobra. */
-    public String track;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    public ExecutionPackage executionPackage;
+    /** Null si en el maestro es "SIN ESTACION". */
+    @ManyToOne(fetch = FetchType.LAZY)
+    public Station station;
+    /** La vía que maniobra; si el maestro no la dice, la de su poste. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    public Track track;
     /** La otra vía, en los que ponen dos en paralelo (Disc/PP, LoadB/PP). */
-    public String connectedTrack;
-    public String profileId;
-    public Double poleKp;
+    @ManyToOne(fetch = FetchType.LAZY)
+    public Track connectedTrack;
+    /** El poste (perfil) del que cuelga; null si no está en un poste. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    public Profile pole;
     public String name;
-    /** Solo sin poste: el KP del propio seccionador. */
+    /** Solo sin poste: el KP del propio seccionador. Con poste, el KP es el del poste. */
     public Double kp;
     public boolean onLoad;
     /** true = normalmente abierto, false = cerrado, null = sin dato. */

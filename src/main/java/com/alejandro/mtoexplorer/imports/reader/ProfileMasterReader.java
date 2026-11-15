@@ -14,28 +14,72 @@ import com.alejandro.mtoexplorer.imports.excel.SheetRow;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Lee profile-master.xlsx: una hoja por método. */
+/**
+ * Lee profile-master.xlsx y enlaza las entidades entre sí: cada hijo apunta al objeto de su padre
+ * (una vía a su paquete, un perfil a su vía…), y Hibernate escribe las claves foráneas al guardar.
+ * Por eso las hojas se leen de padres a hijos, y cada una busca a sus padres en un {@link Lookup}
+ * de lo ya leído.
+ */
 @ApplicationScoped
 public class ProfileMasterReader implements MasterReader<ProfileMaster> {
 
     public static final String MASTER = "PROFILE";
 
+    /** Cómo escribe el maestro un seccionador que no es de ninguna estación (con tilde o sin ella). */
+    private static final List<String> NO_STATION = List.of("SIN ESTACION", "SIN ESTACIÓN");
+
+    /** Claves naturales del maestro. El toString es lo que sale en los mensajes de error. */
+    private record ByName(String ep, String name) {
+        @Override
+        public String toString() {
+            return ep + " / " + name;
+        }
+    }
+
+    private record ProfileKey(String ep, String track, int order) {
+        @Override
+        public String toString() {
+            return ep + " / " + track + " / orden " + order;
+        }
+    }
+
+    private record InsulatorKey(String ep, String station, String name) {
+        @Override
+        public String toString() {
+            return ep + " / " + station + " / " + name;
+        }
+    }
+
     @Override
     public ProfileMaster read(MasterWorkbook workbook) {
-        List<Profile> profiles = profiles(workbook);
-        return new ProfileMaster(
-                executionPackages(workbook),
-                stations(workbook),
-                tracks(workbook),
-                profiles,
-                cantilevers(workbook, byTrackAndOrder(profiles)),
-                disconnectors(workbook),
-                sectionInsulators(workbook),
-                switches(workbook),
+        List<ExecutionPackage> eps = executionPackages(workbook);
+        Lookup<String, ExecutionPackage> epLookup = Lookup.of("el paquete", eps, ep -> ep.code);
+
+        List<Station> stations = stations(workbook, epLookup);
+        Lookup<ByName, Station> stationLookup =
+                Lookup.of("la estación", stations, s -> new ByName(s.executionPackage.code, s.name));
+
+        List<Track> tracks = tracks(workbook, epLookup, stationLookup);
+        Lookup<ByName, Track> trackLookup =
+                Lookup.of("la vía", tracks, t -> new ByName(t.executionPackage.code, t.name));
+
+        List<Profile> profiles = profiles(workbook, trackLookup);
+        List<Cantilever> cantilevers = cantilevers(workbook, Lookup.of("el perfil", profiles,
+                p -> new ProfileKey(p.track.executionPackage.code, p.track.name, p.sortOrder)));
+
+        List<SectionInsulator> insulators = sectionInsulators(workbook, stationLookup, trackLookup);
+        List<SectionInsulatorSwitch> switches = switches(workbook, trackLookup, Lookup.of("el aislador", insulators,
+                i -> new InsulatorKey(i.station.executionPackage.code, i.station.name, i.name)));
+
+        List<Disconnector> disconnectors =
+                disconnectors(workbook, epLookup, stationLookup, trackLookup, polesByProfileId(profiles));
+
+        return new ProfileMaster(eps, stations, tracks, profiles, cantilevers, disconnectors, insulators, switches,
                 UnrecognizedSheet.read(workbook, MASTER));
     }
 
@@ -56,24 +100,31 @@ public class ProfileMasterReader implements MasterReader<ProfileMaster> {
         return eps;
     }
 
-    private static List<Station> stations(MasterWorkbook workbook) {
+    private static List<Station> stations(MasterWorkbook workbook, Lookup<String, ExecutionPackage> eps) {
         List<Station> stations = new ArrayList<>();
         workbook.forEachRow("STATIONS", r -> {
             Station station = new Station();
-            station.ep = r.string("EP");
+            station.executionPackage = eps.require(r.string("EP"), r, "EP");
             station.name = r.string("NOMBRE");
             stations.add(station);
         });
         return stations;
     }
 
-    private static List<Track> tracks(MasterWorkbook workbook) {
+    /** Las estaciones de una vía vienen en una celda, "MOM | PMO": se separan y se busca cada una. */
+    private static List<Track> tracks(MasterWorkbook workbook, Lookup<String, ExecutionPackage> eps,
+                                      Lookup<ByName, Station> stations) {
         List<Track> tracks = new ArrayList<>();
         workbook.forEachRow("TRACKS", r -> {
             Track track = new Track();
-            track.ep = r.string("EP");
+            track.executionPackage = eps.require(r.string("EP"), r, "EP");
             track.name = r.string("NOMBRE");
-            track.stations = r.string("ESTACIONES");
+            String names = r.string("ESTACIONES");
+            if (names != null) {
+                Arrays.stream(names.split("\\|")).map(String::trim).filter(n -> !n.isEmpty())
+                        .forEach(n -> track.stations.add(
+                                stations.require(new ByName(track.executionPackage.code, n), r, "ESTACIONES")));
+            }
             track.enabled = r.yesNo("ENABLED");
             track.sourceSheet = r.string("HOJA_ORIGEN");
             tracks.add(track);
@@ -81,12 +132,11 @@ public class ProfileMasterReader implements MasterReader<ProfileMaster> {
         return tracks;
     }
 
-    private static List<Profile> profiles(MasterWorkbook workbook) {
+    private static List<Profile> profiles(MasterWorkbook workbook, Lookup<ByName, Track> tracks) {
         List<Profile> profiles = new ArrayList<>();
         workbook.forEachRow("PROFILES", r -> {
             Profile p = new Profile();
-            p.ep = r.string("EP");
-            p.track = r.string("VIA");
+            p.track = tracks.require(new ByName(r.string("EP"), r.string("VIA")), r, "VIA");
             p.profileId = r.string("PROFILE_ID");
             p.kp = r.decimal("KP");
             p.sortOrder = required(r.integer("ORDEN"), "ORDEN", r);
@@ -114,35 +164,18 @@ public class ProfileMasterReader implements MasterReader<ProfileMaster> {
         return profiles;
     }
 
-    /** La clave de un perfil en el maestro: paquete, vía y orden. PROFILE_ID no vale, se repite. */
-    private record ProfileKey(String ep, String track, int order) {
-    }
-
-    private static Map<ProfileKey, Profile> byTrackAndOrder(List<Profile> profiles) {
-        Map<ProfileKey, Profile> index = new HashMap<>();
-        for (Profile p : profiles) {
-            index.put(new ProfileKey(p.ep, p.track, p.sortOrder), p);
-        }
-        return index;
-    }
-
     /**
-     * Cada ménsula apunta a su objeto {@link Profile}, no a su clave: al guardar, Hibernate escribe el
-     * id del perfil en la clave foránea. También se añade a {@code profile.cantilevers}, para que el
-     * modelo en memoria sea coherente por los dos lados de la relación.
+     * Cada ménsula apunta a su objeto {@link Profile} y se añade a {@code profile.cantilevers}, para
+     * que el modelo en memoria sea coherente por los dos lados de la relación.
      */
-    private static List<Cantilever> cantilevers(MasterWorkbook workbook, Map<ProfileKey, Profile> profiles) {
+    private static List<Cantilever> cantilevers(MasterWorkbook workbook, Lookup<ProfileKey, Profile> profiles) {
         List<Cantilever> cantilevers = new ArrayList<>();
         workbook.forEachRow("CANTILEVERS", r -> {
-            ProfileKey key = new ProfileKey(r.string("EP"), r.string("VIA"), required(r.integer("ORDEN"), "ORDEN", r));
-            Profile profile = profiles.get(key);
-            if (profile == null) {
-                throw new MasterFormatException("ORDEN", r.rowNumber(), "la ménsula es de un perfil que no está en "
-                        + "PROFILES: " + key.ep() + " / " + key.track() + " / orden " + key.order());
-            }
             Cantilever c = new Cantilever();
-            c.profile = profile;
-            profile.cantilevers.add(c);
+            c.profile = profiles.require(
+                    new ProfileKey(r.string("EP"), r.string("VIA"), required(r.integer("ORDEN"), "ORDEN", r)),
+                    r, "ORDEN");
+            c.profile.cantilevers.add(c);
             c.slot = required(r.integer("SLOT"), "SLOT", r);
             c.type = r.string("CANTILEVER_TYPE");
             c.stagger = r.decimal("STAGGER");
@@ -163,16 +196,72 @@ public class ProfileMasterReader implements MasterReader<ProfileMaster> {
 
     // Las tres hojas del seccionamiento son opcionales: un maestro antiguo no las trae.
 
-    private static List<Disconnector> disconnectors(MasterWorkbook workbook) {
+    private static List<SectionInsulator> sectionInsulators(MasterWorkbook workbook, Lookup<ByName, Station> stations,
+                                                            Lookup<ByName, Track> tracks) {
+        List<SectionInsulator> insulators = new ArrayList<>();
+        workbook.forEachRowIfPresent("SECTION_INSULATORS", r -> {
+            String ep = r.string("EP");
+            SectionInsulator i = new SectionInsulator();
+            i.station = stations.require(new ByName(ep, r.string("ESTACION")), r, "ESTACION");
+            i.name = r.string("NOMBRE");
+            i.kp = r.decimal("KP");
+            i.installationType = r.string("TIPO_INSTALACION");
+            i.track = tracks.optional(byName(ep, r.string("VIA")), r, "VIA");
+            i.connectedTrack = tracks.optional(byName(ep, r.string("VIA_CONECTADA")), r, "VIA_CONECTADA");
+            i.enabled = r.yesNo("ENABLED");
+            insulators.add(i);
+        });
+        return insulators;
+    }
+
+    private static List<SectionInsulatorSwitch> switches(MasterWorkbook workbook, Lookup<ByName, Track> tracks,
+                                                         Lookup<InsulatorKey, SectionInsulator> insulators) {
+        List<SectionInsulatorSwitch> switches = new ArrayList<>();
+        workbook.forEachRowIfPresent("SECTION_INSULATOR_SWITCHES", r -> {
+            String ep = r.string("EP");
+            SectionInsulatorSwitch w = new SectionInsulatorSwitch();
+            w.insulator = insulators.require(new InsulatorKey(ep, r.string("ESTACION"), r.string("AISLADOR")),
+                    r, "AISLADOR");
+            w.insulator.switches.add(w);
+            w.code = r.string("CODIGO");
+            w.kp = r.decimal("KP");
+            w.tangent = r.integer("TANGENTE");
+            w.track = tracks.optional(byName(ep, r.string("VIA")), r, "VIA");
+            w.enabled = r.yesNo("ENABLED");
+            switches.add(w);
+        });
+        return switches;
+    }
+
+    /** Los perfiles de cada paquete por su PROFILE_ID, que se repite: varios candidatos a poste. */
+    private static Map<ByName, List<Profile>> polesByProfileId(List<Profile> profiles) {
+        Map<ByName, List<Profile>> poles = new HashMap<>();
+        for (Profile p : profiles) {
+            poles.computeIfAbsent(new ByName(p.track.executionPackage.code, p.profileId), k -> new ArrayList<>())
+                    .add(p);
+        }
+        return poles;
+    }
+
+    private static List<Disconnector> disconnectors(MasterWorkbook workbook, Lookup<String, ExecutionPackage> eps,
+                                                    Lookup<ByName, Station> stations, Lookup<ByName, Track> tracks,
+                                                    Map<ByName, List<Profile>> poles) {
         List<Disconnector> disconnectors = new ArrayList<>();
         workbook.forEachRowIfPresent("DISCONNECTORS", r -> {
+            String ep = r.string("EP");
             Disconnector d = new Disconnector();
-            d.ep = r.string("EP");
-            d.station = r.string("ESTACION");
-            d.track = r.string("VIA");
-            d.connectedTrack = r.string("VIA_CONECTADA");
-            d.profileId = r.string("PROFILE_ID");
-            d.poleKp = r.decimal("KP_POSTE");
+            d.executionPackage = eps.require(ep, r, "EP");
+            String station = r.string("ESTACION");
+            d.station = station == null || NO_STATION.contains(station.toUpperCase())
+                    ? null : stations.require(new ByName(ep, station), r, "ESTACION");
+            d.pole = pole(r, ep, poles);
+            if (d.pole != null) {
+                d.pole.disconnectors.add(d);
+            }
+            // Sin VIA, la vía del seccionador es la de su poste.
+            Track track = tracks.optional(byName(ep, r.string("VIA")), r, "VIA");
+            d.track = track != null || d.pole == null ? track : d.pole.track;
+            d.connectedTrack = tracks.optional(byName(ep, r.string("VIA_CONECTADA")), r, "VIA_CONECTADA");
             d.name = r.string("NOMBRE");
             d.kp = r.decimal("KP");
             d.onLoad = r.yesNo("ON_LOAD");
@@ -185,38 +274,23 @@ public class ProfileMasterReader implements MasterReader<ProfileMaster> {
         return disconnectors;
     }
 
-    private static List<SectionInsulator> sectionInsulators(MasterWorkbook workbook) {
-        List<SectionInsulator> insulators = new ArrayList<>();
-        workbook.forEachRowIfPresent("SECTION_INSULATORS", r -> {
-            SectionInsulator i = new SectionInsulator();
-            i.ep = r.string("EP");
-            i.station = r.string("ESTACION");
-            i.name = r.string("NOMBRE");
-            i.kp = r.decimal("KP");
-            i.installationType = r.string("TIPO_INSTALACION");
-            i.track = r.string("VIA");
-            i.connectedTrack = r.string("VIA_CONECTADA");
-            i.enabled = r.yesNo("ENABLED");
-            insulators.add(i);
-        });
-        return insulators;
+    /** El poste del seccionador de esta fila: null sin PROFILE_ID; error si no existe o no se puede desempatar. */
+    private static Profile pole(SheetRow r, String ep, Map<ByName, List<Profile>> poles) {
+        String profileId = r.string("PROFILE_ID");
+        if (profileId == null) {
+            return null;
+        }
+        List<Profile> candidates = poles.getOrDefault(new ByName(ep, profileId), List.of());
+        return PoleResolver.resolve(candidates, r.decimal("KP_POSTE"), r.string("VIA"))
+                .orElseThrow(() -> new MasterFormatException("PROFILE_ID", r.rowNumber(), candidates.isEmpty()
+                        ? "no existe el poste " + profileId + " en " + ep
+                        : "hay " + candidates.size() + " postes " + profileId + " en " + ep
+                        + " y ni KP_POSTE ni VIA dicen cuál es"));
     }
 
-    private static List<SectionInsulatorSwitch> switches(MasterWorkbook workbook) {
-        List<SectionInsulatorSwitch> switches = new ArrayList<>();
-        workbook.forEachRowIfPresent("SECTION_INSULATOR_SWITCHES", r -> {
-            SectionInsulatorSwitch w = new SectionInsulatorSwitch();
-            w.ep = r.string("EP");
-            w.station = r.string("ESTACION");
-            w.insulator = r.string("AISLADOR");
-            w.code = r.string("CODIGO");
-            w.kp = r.decimal("KP");
-            w.tangent = r.integer("TANGENTE");
-            w.track = r.string("VIA");
-            w.enabled = r.yesNo("ENABLED");
-            switches.add(w);
-        });
-        return switches;
+    /** La clave de una vía, o null si la celda está vacía (para {@link Lookup#optional}). */
+    private static ByName byName(String ep, String name) {
+        return name == null ? null : new ByName(ep, name);
     }
 
     private static int required(Integer value, String column, SheetRow row) {

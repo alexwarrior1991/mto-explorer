@@ -67,7 +67,7 @@ Por capas: cada una solo conoce la de debajo.
   ├── projection/ resultados de agregados (EpCount, LovFamilyCount)
   └── support/    QueryFilter: el WHERE con filtros opcionales y sus parámetros
              │
-  entity/         las tablas (BaseEntity + 11 entidades, sin lógica)
+  entity/         las tablas (BaseEntity + 11 entidades con sus relaciones, sin lógica)
 
   imports/        la importación de los maestros
   ├── excel/      abrir un .xlsx en streaming y leer filas por nombre de columna
@@ -81,6 +81,31 @@ Por capas: cada una solo conoce la de debajo.
 
 `src/main/resources/db/migration/` tiene las migraciones Flyway, y `docs/maestros.md` las hojas y
 columnas de los maestros.
+
+### Relaciones
+
+```
+execution_package ─┬─< station ─┐
+                   │            ├─< track_station >─ track      @ManyToMany ordenada (@OrderColumn)
+                   └─< track ───┘
+track ─< profile ─< cantilever                                  @ManyToOne / @OneToMany
+profile ─< disconnector (su poste, opcional)
+station ─< section_insulator ─< section_insulator_switch
+```
+
+Todas son `LAZY`, y en Hibernate Reactive una relación `LAZY` **no se carga sola al tocarla**:
+leer `profile.track.name` sin haberla cargado falla con `LazyInitializationException`. Hay dos formas
+de cargarlas, y el proyecto usa las dos:
+
+- **`join fetch` en la consulta**, cuando se sabe de antemano qué hace falta: los listados
+  (`ProfileRepository.search`, `TrackRepository.listByEp`, `SectionInsulatorRepository.search`…).
+- **`Mutiny.fetch(...)`**, para cargar una colección de una entidad ya leída:
+  `ProfileService.get` pide así las ménsulas y los seccionadores del perfil.
+
+`ProfileMasterReader` enlaza los objetos al leer el Excel (cada hijo apunta al objeto de su padre) y
+Hibernate escribe las claves foráneas al guardar. Un hijo cuyo padre no existe hace fallar la
+importación con la fila y la clave. El poste de un seccionador se resuelve con `PoleResolver`
+(PROFILE_ID, después KP_POSTE, después la vía), las mismas reglas que `mto-configuration`.
 
 ### Dónde hay `Multi`
 

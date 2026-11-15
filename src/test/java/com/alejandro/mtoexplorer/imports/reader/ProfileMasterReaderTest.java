@@ -4,6 +4,8 @@ import com.alejandro.mtoexplorer.entity.Cantilever;
 import com.alejandro.mtoexplorer.entity.Disconnector;
 import com.alejandro.mtoexplorer.entity.ExecutionPackage;
 import com.alejandro.mtoexplorer.entity.Profile;
+import com.alejandro.mtoexplorer.entity.SectionInsulator;
+import com.alejandro.mtoexplorer.entity.Track;
 import com.alejandro.mtoexplorer.imports.MasterFixtures;
 import com.alejandro.mtoexplorer.imports.excel.MasterFormatException;
 import com.alejandro.mtoexplorer.imports.excel.MasterWorkbook;
@@ -101,18 +103,86 @@ class ProfileMasterReaderTest {
 
         MasterFormatException e = assertThrows(MasterFormatException.class,
                 () -> reader.read(new MasterWorkbook(file)));
-        assertTrue(e.getMessage().contains("EP1 / TRACK 1 / orden 99"), e.getMessage());
+        assertTrue(e.getMessage().contains("no existe el perfil EP1 / TRACK 1 / orden 99"), e.getMessage());
     }
 
     @Test
-    void disconnectorWithoutPoleKeepsItsOwnNegativeKpAndUnknownNormallyOpen() {
+    void profilesPointToTheirTrackAndTracksToTheirStationsInOrder() {
+        ProfileMaster master = read(true);
+        Track track1 = master.tracks().getFirst();
+
+        assertEquals("TRACK 1", track1.name);
+        assertSame(master.executionPackages().getFirst(), track1.executionPackage);
+        // @ManyToMany ordenada: "AAA | BBB" son las dos estaciones de EP1, en ese orden y los mismos objetos.
+        assertEquals(List.of(master.stations().get(0), master.stations().get(1)), track1.stations);
+        assertSame(track1, master.profiles().getFirst().track);
+        // Una vía sin estaciones en el maestro es una lista vacía.
+        assertTrue(master.tracks().get(2).stations.isEmpty());
+    }
+
+    @Test
+    void disconnectorOnAPoleHangsFromThatProfile() {
+        ProfileMaster master = read(true);
+        Disconnector onPole = master.disconnectors().getFirst();
+        Profile pole = master.profiles().getFirst();
+
+        assertEquals("AAA-01", onPole.name);
+        assertSame(pole, onPole.pole);
+        assertEquals(List.of(onPole), pole.disconnectors);
+        assertEquals("AAA", onPole.station.name);
+        assertSame(pole.track, onPole.track);
+    }
+
+    @Test
+    void disconnectorWithoutPoleNorStationKeepsItsOwnKpAndTracks() {
         Disconnector withoutPole = read(true).disconnectors().get(1);
 
         assertEquals("NS-01", withoutPole.name);
-        assertNull(withoutPole.profileId);
+        assertNull(withoutPole.pole);
+        // "SIN ESTACION" en el maestro es una relación vacía, no una estación con ese nombre.
+        assertNull(withoutPole.station);
         assertEquals(-250.0, withoutPole.kp);
+        assertEquals("TRACK 2", withoutPole.track.name);
+        assertEquals("TRACK 1", withoutPole.connectedTrack.name);
         assertNull(withoutPole.normallyOpen);
         assertFalse(withoutPole.onLoad);
+    }
+
+    @Test
+    void switchesHangFromTheirInsulatorNotFromOneWithTheSameNameInAnotherStation() {
+        ProfileMaster master = read(true);
+        SectionInsulator inAaa = master.sectionInsulators().get(0);
+        SectionInsulator inBbb = master.sectionInsulators().get(1);
+
+        assertEquals(inAaa.name, inBbb.name);
+        assertEquals(2, inAaa.switches.size());
+        assertTrue(inAaa.switches.stream().allMatch(w -> w.insulator == inAaa));
+        assertTrue(inBbb.switches.isEmpty());
+        assertEquals("TRACK 2", master.switches().getFirst().track.name);
+    }
+
+    @Test
+    void aProfileOnAMissingTrackFailsSayingWhichOne() throws IOException {
+        Path file = dir.resolve("profile-master.xlsx");
+        MasterFixtures.writeProfileMaster(file, true);
+        addRow(file, "PROFILES", "EP1", "TRACK 9", "9-9.01", 1000, 1, "DEFINITIVE");
+
+        MasterFormatException e = assertThrows(MasterFormatException.class,
+                () -> reader.read(new MasterWorkbook(file)));
+        assertTrue(e.getMessage().startsWith("Columna VIA"), e.getMessage());
+        assertTrue(e.getMessage().contains("no existe la vía EP1 / TRACK 9"), e.getMessage());
+    }
+
+    @Test
+    void aDisconnectorOnAMissingPoleFails() throws IOException {
+        Path file = dir.resolve("profile-master.xlsx");
+        MasterFixtures.writeProfileMaster(file, true);
+        addRow(file, "DISCONNECTORS", "EP1", "AAA", "TRACK 1", "", "9-9.99", 1, "AAA-99", "", "SI", "NO",
+                "MOTOR", "LoadB/NS", "SI");
+
+        MasterFormatException e = assertThrows(MasterFormatException.class,
+                () -> reader.read(new MasterWorkbook(file)));
+        assertTrue(e.getMessage().contains("no existe el poste 9-9.99 en EP1"), e.getMessage());
     }
 
     @Test

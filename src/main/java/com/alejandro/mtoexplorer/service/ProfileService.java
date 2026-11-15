@@ -6,9 +6,8 @@ import com.alejandro.mtoexplorer.repository.ProfileRepository;
 import com.alejandro.mtoexplorer.service.exception.ResourceNotFoundException;
 import com.alejandro.mtoexplorer.service.model.Page;
 import com.alejandro.mtoexplorer.repository.criteria.ProfileSearch;
-import com.alejandro.mtoexplorer.service.model.ProfileWithCantilevers;
+import com.alejandro.mtoexplorer.service.model.ProfileDetail;
 import io.quarkus.hibernate.reactive.panache.Panache;
-import io.quarkus.hibernate.reactive.panache.PanacheQuery;
 import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
@@ -33,24 +32,25 @@ public class ProfileService {
 
     @WithSession
     public Uni<Page<Profile>> search(ProfileSearch search, int page, int size) {
-        PanacheQuery<Profile> query = profiles.search(search);
         // Una sesión reactiva no admite dos consultas a la vez: primero la página, después el total.
-        return query.page(page, size).list()
-                .chain(items -> query.count().map(total -> new Page<>(items, page, size, total)));
+        return profiles.search(search).page(page, size).list()
+                .chain(items -> profiles.count(search).map(total -> new Page<>(items, page, size, total)));
     }
 
     /**
-     * El perfil con sus ménsulas. {@code profile.cantilevers} es LAZY y en Hibernate Reactive no se
-     * carga solo al tocarlo (fallaría con LazyInitializationException): {@code Mutiny.fetch} lo pide
-     * a la base de datos y devuelve un {@code Uni} con la lista ya cargada, por slot ({@code @OrderBy}).
+     * El perfil con sus ménsulas y sus seccionadores. Las dos colecciones son LAZY, y en Hibernate
+     * Reactive no se cargan solas al tocarlas (fallaría con LazyInitializationException):
+     * {@code Mutiny.fetch} las pide a la base de datos, una detrás de otra, y devuelve un {@code Uni}
+     * con cada lista ya cargada y ordenada por su {@code @OrderBy}.
      */
     @WithSession
-    public Uni<ProfileWithCantilevers> get(String ep, String track, int order) {
+    public Uni<ProfileDetail> get(String ep, String track, int order) {
         return profiles.findByTrackAndOrder(ep, track, order)
                 .onItem().ifNull().failWith(() ->
                         new ResourceNotFoundException("el perfil", ep + " / " + track + " / " + order))
                 .chain(profile -> Mutiny.fetch(profile.cantilevers)
-                        .map(cantilevers -> new ProfileWithCantilevers(profile, cantilevers)));
+                        .chain(cantilevers -> Mutiny.fetch(profile.disconnectors)
+                                .map(disconnectors -> new ProfileDetail(profile, cantilevers, disconnectors))));
     }
 
     /**
