@@ -1,6 +1,6 @@
 package com.alejandro.mtoexplorer.load;
 
-import com.alejandro.mtoexplorer.api.ExplorerConfig;
+import com.alejandro.mtoexplorer.config.ExplorerConfig;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;

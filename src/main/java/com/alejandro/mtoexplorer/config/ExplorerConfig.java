@@ -1,4 +1,4 @@
-package com.alejandro.mtoexplorer.api;
+package com.alejandro.mtoexplorer.config;
 
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;

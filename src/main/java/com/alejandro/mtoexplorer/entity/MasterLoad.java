@@ -27,7 +27,7 @@ public class MasterLoad extends PanacheEntity {
      * La última carga de ese fichero, o null si no se ha cargado nunca.
      */
     public static Uni<MasterLoad> latest(String fileName) {
-        return find("filename", Sort.descending("loadedAt"), fileName).firstResult();
+        return find("fileName", Sort.descending("loadedAt"), fileName).firstResult();
     }
 
     public static Uni<List<MasterLoad>> recent(int max) {
