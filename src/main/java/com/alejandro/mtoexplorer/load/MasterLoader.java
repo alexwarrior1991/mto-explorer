@@ -1,6 +1,6 @@
 package com.alejandro.mtoexplorer.load;
 
-import com.alejandro.mtoexplorer.api.ExplorerConfig;
+import com.alejandro.mtoexplorer.config.ExplorerConfig;
 import com.alejandro.mtoexplorer.entity.*;
 import io.quarkus.hibernate.reactive.panache.Panache;
 import io.quarkus.vertx.VertxContextSupport;
