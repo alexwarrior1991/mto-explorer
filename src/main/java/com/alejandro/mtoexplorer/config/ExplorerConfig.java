@@ -22,4 +22,7 @@ public interface ExplorerConfig {
     @WithDefault("true")
     boolean loadOnStartup();
 
+    /** Cuántos perfiles pide a la base de datos cada página del streaming (/api/profiles/stream). */
+    @WithDefault("500")
+    int streamPageSize();
 }

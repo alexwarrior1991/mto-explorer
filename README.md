@@ -48,19 +48,56 @@ Las dependencias de todas las fases ya están en el `pom.xml`. LangChain4j está
 
 ## Estructura
 
+Por capas: cada una solo conoce la de debajo.
+
 ```
-src/main/java/com/alejandro/mtoexplorer/
-├── config/   fase 1 · configuración tipada (mto.*)
-├── kp/       fase 1 · puntos kilométricos (17858.5 ↔ 17+858.5)
-├── entity/   fase 1 · entidades Panache reactivas
-├── load/     fase 1 · lectura de Excel y carga
-├── api/      fase 1 · recursos REST y DTOs
-├── grpc/     fase 3 · servicios gRPC (los .proto van en src/main/proto)
-├── jobs/     fase 4 · tareas programadas
-└── ai/       fase 5 · asistente LangChain4j
-src/main/resources/db/migration/   migraciones Flyway
-docs/maestros.md                   hojas y columnas de los maestros
+            HTTP
+             │
+  api/            recursos REST: leen y validan parámetros, llaman a un servicio, devuelven DTO
+  ├── dto/        el contrato JSON (records)
+  ├── mapper/     entidad / modelo → DTO (formato: PK "17+858.5", tangente "1:9"…)
+  └── error/      excepciones → application/problem+json (RFC 9457)
+             │
+  service/        lógica de negocio; abren la sesión reactiva (@WithSession)
+  ├── model/      lo que devuelven (Page, ProfileWithCantilevers, EpQuality…)
+  └── exception/  excepciones de negocio (ResourceNotFoundException)
+             │
+  repository/     consultas, un repositorio Panache por entidad
+  ├── criteria/   filtros de búsqueda (ProfileSearch, LovSearch)
+  └── projection/ resultados de agregados (EpCount, LovFamilyCount)
+             │
+  entity/         las tablas (BaseEntity + 11 entidades, sin lógica)
+
+  imports/        la importación de los maestros
+  ├── excel/      abrir un .xlsx en streaming y leer filas por nombre de columna
+  ├── reader/     hojas → entidades (código puro, sin base de datos)
+  ├── store/      sustituir un maestro en la base de datos, en una transacción
+  └── MasterImportService   qué importar y cuándo; puente bloqueante → reactivo
+
+  config/  configuración tipada (mto.*)      kp/    puntos kilométricos
+  grpc/    fase 3                            jobs/  fase 4          ai/  fase 5
 ```
+
+`src/main/resources/db/migration/` tiene las migraciones Flyway, y `docs/maestros.md` las hojas y
+columnas de los maestros.
+
+### Dónde hay `Multi`
+
+- `GET /api/profiles/stream`: los perfiles en streaming (NDJSON). `ProfileService.stream` pide
+  páginas con `Multi.createBy().repeating()` hasta la primera vacía y emite sus perfiles uno a uno.
+- `GET /api/eps/overview`: `ExecutionPackageService.overview` pasa la lista de paquetes a un `Multi`,
+  lanza los recuentos de cada uno con `transformToUniAndConcatenate` (uno detrás de otro: una sesión
+  reactiva no admite dos consultas a la vez) y lo junta de nuevo con `collect().asList()`.
+
+### Tests
+
+| Nivel | Ejemplos | Qué necesita |
+|---|---|---|
+| Unitario | `KpTest`, `MasterWorkbookTest`, `*MasterReaderTest` | Nada: JUnit a secas |
+| Servicio con mocks | `QualityServiceTest` | Mockito; sin Quarkus ni base de datos |
+| Repositorio | `ProfileRepositoryTest` | `@QuarkusTest` + `@RunOnVertxContext` + `UniAsserter` |
+| Importación | `MasterImportServiceTest`, `MissingDataDirTest` | `@QuarkusTest`, sin HTTP |
+| API | `ExplorerApiTest`, `SectioningApiTest`, `ProblemDetailsTest`, `ProfileStreamTest` | `@QuarkusTest` + RestAssured |
 
 ## Imagen nativa
 

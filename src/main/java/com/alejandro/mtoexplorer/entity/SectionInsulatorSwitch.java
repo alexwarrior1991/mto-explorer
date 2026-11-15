@@ -1,13 +1,12 @@
 package com.alejandro.mtoexplorer.entity;
 
-import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
 /** Hoja SECTION_INSULATOR_SWITCHES de profile-master.xlsx: una aguja de un aislador, por (ep, station, insulator). */
 @Entity
 @Table(name = "section_insulator_switch")
-public class SectionInsulatorSwitch extends PanacheEntity {
+public class SectionInsulatorSwitch extends BaseEntity {
 
     public String ep;
     public String station;

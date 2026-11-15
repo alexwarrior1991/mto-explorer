@@ -1,9 +1,10 @@
 package com.alejandro.mtoexplorer.api;
 
-import com.alejandro.mtoexplorer.entity.MasterLoad;
-import com.alejandro.mtoexplorer.load.FileLoadResult;
-import com.alejandro.mtoexplorer.load.MasterLoader;
-import io.quarkus.hibernate.reactive.panache.common.WithSession;
+import com.alejandro.mtoexplorer.api.dto.ImportResultDto;
+import com.alejandro.mtoexplorer.api.dto.MasterLoadDto;
+import com.alejandro.mtoexplorer.api.mapper.DtoMapper;
+import com.alejandro.mtoexplorer.imports.ImportHistoryService;
+import com.alejandro.mtoexplorer.imports.MasterImportService;
 import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.ws.rs.DefaultValue;
@@ -12,37 +13,33 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.QueryParam;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
-import java.time.Instant;
 import java.util.List;
 
 @Path("/api/loads")
+@Tag(name = "Cargas", description = "Importación de los maestros y su historial")
 public class LoadResource {
 
-    public record MasterLoadDto(String file, Instant lastModified, long sizeBytes, Instant loadedAt,
-                                int rows, long durationMs) {
-    }
+    private final MasterImportService imports;
+    private final ImportHistoryService history;
 
-    private final MasterLoader loader;
-
-    LoadResource(MasterLoader loader) {
-        this.loader = loader;
+    LoadResource(MasterImportService imports, ImportHistoryService history) {
+        this.imports = imports;
+        this.history = history;
     }
 
     @GET
-    @WithSession
     @Operation(summary = "Últimas cargas de los maestros")
     public Uni<List<MasterLoadDto>> recent() {
-        return MasterLoad.recent(20).map(loads -> loads.stream()
-                .map(l -> new MasterLoadDto(l.fileName, l.lastModified, l.sizeBytes, l.loadedAt, l.rowCount, l.durationMs))
-                .toList());
+        return history.recent(20).map(list -> DtoMapper.toDtos(list, DtoMapper::toDto));
     }
 
-    /** Bloqueante: lee Excel. @Blocking lo saca del event loop a un hilo worker. */
+    /** Bloqueante: lee Excel. {@code @Blocking} lo saca del event loop a un hilo worker. */
     @POST
     @Blocking
-    @Operation(summary = "Vuelve a cargar los maestros; con force=false solo los que han cambiado")
-    public List<FileLoadResult> reload(@QueryParam("force") @DefaultValue("true") boolean force) {
-        return force ? loader.reloadAll() : loader.reloadIfChanged();
+    @Operation(summary = "Vuelve a importar los maestros; con force=false solo los que han cambiado")
+    public List<ImportResultDto> reload(@QueryParam("force") @DefaultValue("true") boolean force) {
+        return DtoMapper.toDtos(force ? imports.importAll() : imports.importIfChanged(), DtoMapper::toDto);
     }
 }

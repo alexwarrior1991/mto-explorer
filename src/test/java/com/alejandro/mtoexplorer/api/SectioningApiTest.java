@@ -1,6 +1,6 @@
 package com.alejandro.mtoexplorer.api;
 
-import com.alejandro.mtoexplorer.load.MasterFixturesResource;
+import com.alejandro.mtoexplorer.imports.MasterFixturesResource;
 import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;

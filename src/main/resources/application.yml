@@ -8,6 +8,7 @@ mto:
   lov-file: lov-master.xlsx
   profile-file: profile-master.xlsx
   load-on-startup: true
+  stream-page-size: 500
 
 quarkus:
   http:

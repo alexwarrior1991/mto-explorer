@@ -1,13 +1,12 @@
 package com.alejandro.mtoexplorer.entity;
 
-import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
 /** Hoja SECTION_INSULATORS de profile-master.xlsx: un aislador de sección. Clave natural: (ep, station, name). */
 @Entity
 @Table(name = "section_insulator")
-public class SectionInsulator extends PanacheEntity {
+public class SectionInsulator extends BaseEntity {
 
     public String ep;
     public String station;

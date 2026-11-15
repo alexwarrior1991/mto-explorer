@@ -1,37 +1,45 @@
 package com.alejandro.mtoexplorer.api;
 
-import com.alejandro.mtoexplorer.api.Dtos.ProfileDetail;
-import com.alejandro.mtoexplorer.api.Dtos.ProfileSummary;
-import com.alejandro.mtoexplorer.entity.Cantilever;
-import com.alejandro.mtoexplorer.entity.Profile;
+import com.alejandro.mtoexplorer.api.dto.PageDto;
+import com.alejandro.mtoexplorer.api.dto.ProfileDetailDto;
+import com.alejandro.mtoexplorer.api.dto.ProfileSummaryDto;
+import com.alejandro.mtoexplorer.api.mapper.DtoMapper;
 import com.alejandro.mtoexplorer.kp.Kp;
-import io.quarkus.hibernate.reactive.panache.PanacheQuery;
-import io.quarkus.hibernate.reactive.panache.common.WithSession;
-import io.quarkus.panache.common.Parameters;
-import io.quarkus.panache.common.Sort;
+import com.alejandro.mtoexplorer.repository.criteria.ProfileSearch;
+import com.alejandro.mtoexplorer.service.ProfileService;
+import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
-import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+import org.jboss.resteasy.reactive.common.util.RestMediaType;
+import org.jboss.resteasy.reactive.RestStreamElementType;
 
-import java.util.ArrayList;
-import java.util.List;
+import static com.alejandro.mtoexplorer.api.QueryParams.blankToNull;
 
 @Path("/api/profiles")
-@WithSession
+@Tag(name = "Perfiles", description = "Postes y pórticos, con sus ménsulas")
 public class ProfileResource {
 
+    private final ProfileService service;
+
+    ProfileResource(ProfileService service) {
+        this.service = service;
+    }
+
     @GET
-    @Operation(summary = "Perfiles de un paquete, opcionalmente de una vía y un tramo de PK, ordenados por vía y orden")
-    public Uni<PageResult<ProfileSummary>> search(
+    @Operation(summary = "Perfiles de un paquete, opcionalmente de una vía y un tramo de PK, por vía y orden")
+    public Uni<PageDto<ProfileSummaryDto>> search(
             @QueryParam("ep") @NotBlank String ep,
             @QueryParam("track") String track,
             @Parameter(description = "PK inicial: 12+345 o metros") @QueryParam("kpFrom") String kpFrom,
@@ -39,43 +47,44 @@ public class ProfileResource {
             @Parameter(description = "Solo los marcados REVISAR = SI") @QueryParam("toReview") Boolean toReview,
             @QueryParam("page") @DefaultValue("0") @Min(0) int page,
             @QueryParam("size") @DefaultValue("50") @Min(1) @Max(500) int size) {
+        return service.search(criteria(ep, track, kpFrom, kpTo, toReview), page, size)
+                .map(result -> DtoMapper.toDto(result, DtoMapper::toSummary));
+    }
 
-        List<String> where = new ArrayList<>(List.of("ep = :ep"));
-        Parameters params = Parameters.with("ep", ep);
-        if (track != null && !track.isBlank()) {
-            where.add("track = :track");
-            params.and("track", track);
-        }
-        if (kpFrom != null && !kpFrom.isBlank()) {
-            where.add("kp >= :kpFrom");
-            params.and("kpFrom", Kp.parse(kpFrom));
-        }
-        if (kpTo != null && !kpTo.isBlank()) {
-            where.add("kp <= :kpTo");
-            params.and("kpTo", Kp.parse(kpTo));
-        }
-        if (toReview != null) {
-            where.add("toReview = :toReview");
-            params.and("toReview", toReview);
-        }
-
-        PanacheQuery<Profile> query = Profile.find(String.join(" and ", where),
-                Sort.by("track").and("sortOrder"), params);
-        // Una sesión reactiva no admite dos consultas a la vez: primero la página, después el total.
-        return query.page(page, size).list()
-                .chain(profiles -> query.count().map(total -> new PageResult<>(
-                        profiles.stream().map(ProfileSummary::of).toList(), page, size, total)));
+    /**
+     * Los mismos perfiles que la búsqueda, sin paginar y en streaming: NDJSON, un JSON por línea,
+     * que salen según llegan de la base de datos. Devolver un {@link Multi} es lo que lo hace
+     * streaming: Quarkus escribe cada elemento en cuanto se emite.
+     */
+    @GET
+    @Path("/stream")
+    @Produces(RestMediaType.APPLICATION_NDJSON)
+    @RestStreamElementType(MediaType.APPLICATION_JSON)
+    @Operation(summary = "Todos los perfiles de la búsqueda en streaming (NDJSON), sin paginar")
+    public Multi<ProfileSummaryDto> stream(
+            @QueryParam("ep") @NotBlank String ep,
+            @QueryParam("track") String track,
+            @QueryParam("kpFrom") String kpFrom,
+            @QueryParam("kpTo") String kpTo,
+            @QueryParam("toReview") Boolean toReview) {
+        return service.stream(criteria(ep, track, kpFrom, kpTo, toReview))
+                .onItem().transform(DtoMapper::toSummary);
     }
 
     @GET
     @Path("/{ep}/{track}/{order}")
     @Operation(summary = "Ficha de un perfil con sus ménsulas")
-    public Uni<ProfileDetail> get(@PathParam("ep") String ep, @PathParam("track") String track,
-                                  @PathParam("order") int order) {
-        return Profile.findByTrackAndOrder(ep, track, order)
-                .onItem().ifNull().failWith(() ->
-                        new NotFoundException("No existe el perfil " + order + " de " + ep + " / " + track))
-                .chain(profile -> Cantilever.listByProfile(ep, track, order)
-                        .map(cantilevers -> ProfileDetail.of(profile, cantilevers)));
+    public Uni<ProfileDetailDto> get(@PathParam("ep") String ep, @PathParam("track") String track,
+                                     @PathParam("order") int order) {
+        return service.get(ep, track, order).map(DtoMapper::toDto);
+    }
+
+    /** Traduce los parámetros HTTP a criterios: textos vacíos fuera y el PK de "12+345" a metros. */
+    private static ProfileSearch criteria(String ep, String track, String kpFrom, String kpTo, Boolean toReview) {
+        return new ProfileSearch(ep, blankToNull(track), kp(kpFrom), kp(kpTo), toReview);
+    }
+
+    private static Double kp(String text) {
+        return text == null || text.isBlank() ? null : Kp.parse(text);
     }
 }

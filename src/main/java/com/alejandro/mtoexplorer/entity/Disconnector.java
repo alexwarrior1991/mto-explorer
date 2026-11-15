@@ -1,6 +1,5 @@
 package com.alejandro.mtoexplorer.entity;
 
-import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
@@ -11,7 +10,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "disconnector")
-public class Disconnector extends PanacheEntity {
+public class Disconnector extends BaseEntity {
 
     public String ep;
     /** La estación, o "SIN ESTACION" si no es de ninguna. */

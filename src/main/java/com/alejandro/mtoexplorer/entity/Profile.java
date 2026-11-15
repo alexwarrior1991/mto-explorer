@@ -1,7 +1,5 @@
 package com.alejandro.mtoexplorer.entity;
 
-import io.quarkus.hibernate.reactive.panache.PanacheEntity;
-import io.smallrye.mutiny.Uni;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -12,7 +10,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "profile")
-public class Profile extends PanacheEntity {
+public class Profile extends BaseEntity {
 
     public String ep;
     public String track;
@@ -42,12 +40,4 @@ public class Profile extends PanacheEntity {
     public boolean toReview;
     public String sourceSheet;
     public Integer sourceRow;
-
-    /**
-     * El perfil, o null si no existe.
-     */
-    public static Uni<Profile> findByTrackAndOrder(String ep, String track, int sortOrder) {
-        return find("ep = ?1 and track = ?2 and sortOrder = ?3", ep, track, sortOrder)
-                .firstResult();
-    }
 }
