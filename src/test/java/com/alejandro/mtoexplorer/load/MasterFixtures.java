@@ -18,15 +18,14 @@ import java.util.Date;
  * Escribe dos maestros pequeños e inventados con la misma forma que los reales. Los tests no
  * dependen de los datos de ingeniería, que no están en el repositorio.
  *
- * <p>Viene hecho porque escribir Excel con POI no es lo que se aprende aquí. Úsalo desde un
- * {@code QuarkusTestResourceLifecycleManager} que cree una carpeta temporal, llame a
- * {@link #writeAll(Path)} y devuelva {@code mto.data-dir} apuntando a ella (docs/fase-1.md, paso 8).
- *
  * <p>Qué contiene, para escribir los asserts: EP1 (2 estaciones, vías TRACK 1 y TRACK 2) y EP2;
- * 6 perfiles (5 en EP1 y 1 en EP2; uno de cada paquete marcado REVISAR); en EP1/TRACK 1 los perfiles de orden 2 y 3 comparten
- * PROFILE_ID 1-1.02, como pasa en el maestro real; 3 ménsulas (dos del perfil de orden 2);
- * 3 LOVs (2 de Sectioning, una de ellas REVISAR, y HEB-200 de PoleType); y 3 valores en
- * NO_RECONOCIDO (uno en el maestro de LOVs y dos en el de perfiles).
+ * 6 perfiles (5 en EP1 y 1 en EP2; uno de cada paquete marcado REVISAR); en EP1/TRACK 1 los perfiles
+ * de orden 2 y 3 comparten PROFILE_ID 1-1.02, como pasa en el maestro real; 3 ménsulas (dos del
+ * perfil de orden 2); 3 LOVs (2 de Sectioning, una de ellas REVISAR, y HEB-200 de PoleType); y 3
+ * valores en NO_RECONOCIDO (uno en el maestro de LOVs y dos en el de perfiles). Seccionamiento de EP1:
+ * 2 seccionadores (AAA-01 en el poste 1-1.01; NS-01 sin poste ni estación, en el KP -0+250) y
+ * 2 aisladores "SI W1-W2" en las estaciones AAA y BBB; el de AAA con las agujas W1 (1:12) y W2
+ * (1:9, fuera de servicio).
  */
 public final class MasterFixtures {
 
@@ -102,6 +101,25 @@ public final class MasterFixtures {
                             null, "SI", "SI", 8},
                     new Object[]{"EP1", "TRACK 1", "1-1.01", 1, 1, "EMT-2T", 35, 1.4, null, 5.33, null, null, null,
                             null, "SI", "NO", 6});
+            sheet(wb, "DISCONNECTORS",
+                    new Object[]{"EP", "ESTACION", "VIA", "VIA_CONECTADA", "PROFILE_ID", "KP_POSTE", "NOMBRE", "KP",
+                            "ON_LOAD", "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION", "ENABLED"},
+                    // En un poste: su KP es el del perfil.
+                    new Object[]{"EP1", "AAA", "TRACK 1", null, "1-1.01", 12000, "AAA-01", null,
+                            "SI", "NO", "MOTOR", "LoadB/NS", "SI"},
+                    // Sin poste, con su propio KP negativo, y uniendo dos vías en paralelo.
+                    new Object[]{"EP1", "SIN ESTACION", "TRACK 2", "TRACK 1", null, null, "NS-01", -250,
+                            "NO", null, "MOTOR", "Disc/PP", "SI"});
+            sheet(wb, "SECTION_INSULATORS",
+                    new Object[]{"EP", "ESTACION", "NOMBRE", "KP", "TIPO_INSTALACION", "VIA", "VIA_CONECTADA",
+                            "ENABLED"},
+                    new Object[]{"EP1", "AAA", "SI W1-W2", 12100, "TRACK_CONNECTION", "TRACK 1", "TRACK 2", "SI"},
+                    // Mismo nombre en otra estación: el aislador es (EP, ESTACION, NOMBRE).
+                    new Object[]{"EP1", "BBB", "SI W1-W2", 13500, "IN_TRACK", "TRACK 1", null, "SI"});
+            sheet(wb, "SECTION_INSULATOR_SWITCHES",
+                    new Object[]{"EP", "ESTACION", "AISLADOR", "CODIGO", "KP", "TANGENTE", "VIA", "ENABLED"},
+                    new Object[]{"EP1", "AAA", "SI W1-W2", "W2", 12120, 9, "TRACK 2", "NO"},
+                    new Object[]{"EP1", "AAA", "SI W1-W2", "W1", 12080, 12, "TRACK 1", "SI"});
             sheet(wb, "NO_RECONOCIDO",
                     new Object[]{"TIPO", "VALOR", "EP", "HOJA", "PRIMERA_FILA", "APARICIONES"},
                     new Object[]{"codigo sin Sectioning habilitado", "AnMP T", "EP1", "HR Track 1", 283, 1},
@@ -124,7 +142,8 @@ public final class MasterFixtures {
             for (int c = 0; c < rows[r].length; c++) {
                 Object value = rows[r][c];
                 switch (value) {
-                    case null -> { }
+                    case null -> {
+                    }
                     case String s -> row.createCell(c).setCellValue(s);
                     case Number n -> row.createCell(c).setCellValue(n.doubleValue());
                     case LocalDate d -> row.createCell(c).setCellValue(
