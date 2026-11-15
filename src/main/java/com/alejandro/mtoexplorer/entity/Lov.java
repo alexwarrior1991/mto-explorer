@@ -1,13 +1,12 @@
 package com.alejandro.mtoexplorer.entity;
 
-import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
 /** Hoja LOVS de lov-master.xlsx: un código del catálogo. */
 @Entity
 @Table(name = "lov")
-public class Lov extends PanacheEntity {
+public class Lov extends BaseEntity {
 
     /** La familia del código: Sectioning, PoleType… */
     public String entity;

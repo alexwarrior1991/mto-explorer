@@ -18,6 +18,10 @@ MTO: no llama a `mto-configuration`, ni a RabbitMQ, ni a Keycloak; solo lee los 
 - Persistencia **reactiva**: Hibernate Reactive + Panache. Flyway migra por JDBC al arrancar.
 - LangChain4j con **Ollama en local** (fase 5): los datos de ingeniería no salen de la máquina.
 - Columnas de los maestros: `docs/maestros.md`.
+- **Capas** (README, «Estructura»): los recursos de `api/` no tienen lógica ni tocan repositorios;
+  los servicios no devuelven DTO ni saben de HTTP (lanzan excepciones de negocio, que `api/error`
+  convierte en problem+json); los repositorios no abren sesión. La importación lee en `imports/reader`
+  (sin base de datos) y escribe en `imports/store` (una transacción por maestro).
 
 ## Comandos
 - `MTO_DATA_DIR=/ruta/a/mto-configuration/data ./mvnw quarkus:dev`

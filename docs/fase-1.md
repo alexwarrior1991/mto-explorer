@@ -8,6 +8,10 @@ perfil con sus ménsulas, catálogo de LOVs y un panel de calidad.
 Reactive, Mutiny (`Uni`), `@Observes StartupEvent`, Quarkus REST, validación, OpenAPI y
 `@QuarkusTest`.
 
+> **Nota:** tras terminar esta guía, el código se reorganizó por capas (recursos → servicios →
+> repositorios, y la importación en lector, almacén y orquestador). La estructura actual está en el
+> [README](../README.md#estructura); esta guía describe la primera versión, más compacta.
+
 Las columnas de cada hoja están en [maestros.md](maestros.md). Haz los pasos en orden: cada uno
 deja algo que se puede probar. Cuando acabes uno, pídeme que lo revise.
 
@@ -194,8 +198,9 @@ Pistas:
   400 solo.
 - Errores en `application/problem+json`, como en `mto-configuration`, con
   `@ServerExceptionMapper` (`IllegalArgumentException` → 400; `MasterFormatException` → 422).
-- Paginación con Panache: `find(...).page(page, size).list()` y `.count()`. Son dos `Uni`;
-  combínalos con `Uni.combine().all().unis(a, b).asTuple()`.
+- Paginación con Panache: `find(...).page(page, size).list()` y `.count()`. Son dos `Uni`, y
+  **hay que encadenarlos** con `.chain()`: una sesión de Hibernate Reactive no admite dos consultas
+  a la vez, así que `Uni.combine()` (que los lanza en paralelo) falla.
 
 **Hecho cuando:** puedes probarlo todo desde Swagger UI (<http://localhost:8090/q/swagger-ui>).
 

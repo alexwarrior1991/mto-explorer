@@ -158,6 +158,12 @@
             <artifactId>quarkus-test-hibernate-reactive-panache</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Mockito: probar un servicio con sus repositorios simulados, sin base de datos -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit-mockito</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

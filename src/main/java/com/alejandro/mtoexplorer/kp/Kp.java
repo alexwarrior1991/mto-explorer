@@ -31,10 +31,12 @@ public final class Kp {
 
     /**
      * Acepta "17+858.5", "17+858" o metros a secas ("17858.5").
+     *
+     * @throws InvalidKpException si no es ninguna de esas formas
      */
     public static double parse(String text) {
         if (text == null || text.isBlank()) {
-            throw new IllegalArgumentException("PK vacío");
+            throw new InvalidKpException(text, "PK vacío", null);
         }
         String value = text.trim().replace(',', '.');
         try {
@@ -46,9 +48,8 @@ public final class Kp {
             boolean negative = km.startsWith("-");
             double meters = Math.abs(Integer.parseInt(km)) * 1000d + Double.parseDouble(value.substring(plus + 1));
             return negative ? -meters : meters;
-
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("PK no válido: '" + text + "'. Usa 12+345 o metros (12345)", e);
+            throw new InvalidKpException(text, "PK no válido: '" + text + "'. Usa 12+345 o metros (12345)", e);
         }
     }
 }

@@ -1,6 +1,6 @@
 package com.alejandro.mtoexplorer.api;
 
-import com.alejandro.mtoexplorer.load.MasterFixturesResource;
+import com.alejandro.mtoexplorer.imports.MasterFixturesResource;
 import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
@@ -34,6 +34,15 @@ class ExplorerApiTest {
                 .then().statusCode(200)
                 .body("name", contains("TRACK 1", "TRACK 2"))
                 .body("[0].stations", contains("AAA", "BBB"));
+    }
+
+    @Test
+    void overviewCountsTracksAndProfilesPerPackage() {
+        given().get("/api/eps/overview")
+                .then().statusCode(200)
+                .body("code", contains("EP1", "EP2"))
+                .body("tracks", contains(2, 1))
+                .body("profiles", contains(5, 1));
     }
 
     @Test
