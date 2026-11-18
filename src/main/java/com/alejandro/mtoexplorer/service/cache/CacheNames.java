@@ -3,7 +3,6 @@ package com.alejandro.mtoexplorer.service.cache;
 import com.alejandro.mtoexplorer.imports.reader.LovMasterReader;
 import com.alejandro.mtoexplorer.imports.reader.ProfileMasterReader;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 

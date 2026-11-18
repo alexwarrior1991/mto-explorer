@@ -24,6 +24,9 @@ MTO: no llama a `mto-configuration`, ni a RabbitMQ, ni a Keycloak; solo lee los 
   (sin base de datos) y escribe en `imports/store` (una transacción por maestro).
 - **Relaciones LAZY** (README, «Relaciones»): en Hibernate Reactive no se cargan solas. Lo que lee un
   DTO se trae con `join fetch` en la consulta del repositorio, o con `Mutiny.fetch` en el servicio.
+- **Caché** (README, «Caché en Redis»): `@CacheResult` solo en métodos de servicio que devuelven datos
+  planos (records sin entidades). Cada caché nueva va en `CacheNames`, con los maestros de los que
+  depende; se vacía por el evento `MastersImported`, nunca a mano desde el importador.
 
 ## Comandos
 - `MTO_DATA_DIR=/ruta/a/mto-configuration/data ./mvnw quarkus:dev`
