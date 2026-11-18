@@ -7,8 +7,10 @@ import com.alejandro.mtoexplorer.repository.ExecutionPackageRepository;
 import com.alejandro.mtoexplorer.repository.ProfileRepository;
 import com.alejandro.mtoexplorer.repository.StationRepository;
 import com.alejandro.mtoexplorer.repository.TrackRepository;
+import com.alejandro.mtoexplorer.service.cache.CacheNames;
 import com.alejandro.mtoexplorer.service.exception.ResourceNotFoundException;
 import com.alejandro.mtoexplorer.service.model.EpOverview;
+import io.quarkus.cache.CacheResult;
 import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
@@ -16,7 +18,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.List;
 
-/** Paquetes de ejecución, sus estaciones y sus vías. */
+/**
+ * Paquetes de ejecución, sus estaciones y sus vías.
+ */
 @ApplicationScoped
 public class ExecutionPackageService {
 
@@ -61,18 +65,27 @@ public class ExecutionPackageService {
      * <p>{@code transformToUniAndConcatenate} espera a que acabe un paquete antes de empezar el
      * siguiente. {@code transformToUniAndMerge} los lanzaría a la vez, y una sesión de Hibernate
      * Reactive no admite dos consultas a la vez: fallaría.
+     *
+     * <p>Son 1 + 2 consultas por paquete, y el resultado solo cambia al importar: se cachea. La
+     * primera llamada hace las consultas y guarda la lista en Redis; las siguientes la leen de Redis
+     * sin abrir sesión. {@code @CacheResult} con un {@code Uni} guarda el valor que emite, no el
+     * {@code Uni}, y no guarda los fallos.
      */
+    @CacheResult(cacheName = CacheNames.EP_OVERVIEW)
     @WithSession
     public Uni<List<EpOverview>> overview() {
         return executionPackages.listAllByCode()
                 .onItem().transformToMulti(eps -> Multi.createFrom().iterable(eps))
                 .onItem().transformToUniAndConcatenate(ep -> tracks.countByEp(ep.code)
                         .chain(trackCount -> profiles.countByEp(ep.code)
-                                .map(profileCount -> new EpOverview(ep, trackCount, profileCount))))
+                                .map(profileCount -> new EpOverview(ep.code, ep.name, ep.enabled,
+                                        trackCount, profileCount))))
                 .collect().asList();
     }
 
-    /** El paquete, o ResourceNotFoundException si no existe. */
+    /**
+     * El paquete, o ResourceNotFoundException si no existe.
+     */
     private Uni<ExecutionPackage> existing(String ep) {
         return executionPackages.findByCode(ep)
                 .onItem().ifNull().failWith(() -> new ResourceNotFoundException("el paquete", ep));

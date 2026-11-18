@@ -32,9 +32,17 @@ quarkus:
     physical-naming-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
 
   # --- Caché (fase 2) ------------------------------------------------------------
-  # Dev Services levanta Redis. Cada @CacheResult(cacheName = "...") usa Redis.
+  # Dev Services levanta Redis. Cada @CacheResult(cacheName = "...") guarda en Redis, con claves
+  # "mto-explorer:<caché>:<clave>". Los nombres y de qué maestro depende cada caché: CacheNames.
   cache:
     type: redis
+    redis:
+      # {cache-name} es obligatorio: sin él, todas las cachés comparten claves en Redis (las que no
+      # tienen parámetros, la misma: "default-cache-key") y una lee los datos de otra.
+      prefix: mto-explorer:{cache-name}
+      # Se vacían al importar (CacheInvalidator). Esto es la red de seguridad: si algo cambiara la
+      # base de datos por otro camino, una entrada no duraría más de un día.
+      expire-after-write: 24H
 
   # --- gRPC (fase 3) -------------------------------------------------------------
   # El servidor gRPC comparte el puerto HTTP (8090) en vez de abrir el 9000.

@@ -10,6 +10,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.QueryParam;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+import jakarta.ws.rs.PathParam;
 
 import java.util.List;
 
@@ -29,6 +30,13 @@ public class QualityResource {
     @Operation(summary = "Por paquete: perfiles y ménsulas, cuántos quedan por revisar y cuántos valores sin reconocer")
     public Uni<List<EpQualityDto>> perExecutionPackage() {
         return service.perExecutionPackage().map(list -> DtoMapper.toDtos(list, DtoMapper::toDto));
+    }
+
+    @GET
+    @Path("/{ep}")
+    @Operation(summary = "La calidad de un paquete (cacheada por paquete)")
+    public Uni<EpQualityDto> ofExecutionPackage(@PathParam("ep") String ep) {
+        return service.ofExecutionPackage(ep).map(DtoMapper::toDto);
     }
 
     @GET

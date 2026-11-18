@@ -37,6 +37,8 @@ import com.alejandro.mtoexplorer.service.model.EpOverview;
 import com.alejandro.mtoexplorer.service.model.EpQuality;
 import com.alejandro.mtoexplorer.service.model.Page;
 import com.alejandro.mtoexplorer.service.model.ProfileDetail;
+import com.alejandro.mtoexplorer.api.dto.ImportEventDto;
+import com.alejandro.mtoexplorer.imports.event.ImportEvent;
 
 import java.util.List;
 import java.util.function.Function;
@@ -72,8 +74,7 @@ public final class DtoMapper {
     }
 
     public static EpOverviewDto toDto(EpOverview o) {
-        ExecutionPackage e = o.executionPackage();
-        return new EpOverviewDto(e.code, e.name, e.enabled, o.tracks(), o.profiles());
+        return new EpOverviewDto(o.code(), o.name(), o.enabled(), o.tracks(), o.profiles());
     }
 
     public static StationDto toDto(Station s) {
@@ -155,12 +156,19 @@ public final class DtoMapper {
         return new ImportResultDto(r.file(), r.status().name(), r.rows(), r.durationMs(), r.detail());
     }
 
-    /** El nombre de una vía opcional. */
+    /**
+     * El nombre de una vía opcional.
+     */
     private static String name(Track track) {
         return track == null ? null : track.name;
     }
 
     private static List<String> split(String value, String separator) {
         return value == null ? List.of() : List.of(value.split(separator));
+    }
+
+    public static ImportEventDto toDto(ImportEvent e) {
+        FileImportResult r = e.result();
+        return new ImportEventDto(e.at(), r.master(), r.file(), r.status().name(), r.rows(), r.durationMs(), r.detail());
     }
 }

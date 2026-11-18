@@ -13,7 +13,9 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 
-/** La API sobre los maestros de prueba de {@code MasterFixtures}, cargados al arrancar. */
+/**
+ * La API sobre los maestros de prueba de {@code MasterFixtures}, cargados al arrancar.
+ */
 @QuarkusTest
 @WithTestResource(MasterFixturesResource.class)
 class ExplorerApiTest {
@@ -154,5 +156,16 @@ class ExplorerApiTest {
                 .then().statusCode(200)
                 .body("status", contains("LOADED", "LOADED"));
         given().get("/api/eps").then().body("code", contains("EP1", "EP2"));
+    }
+
+    @Test
+    void qualityOfOneExecutionPackage() {
+        given().get("/api/quality/EP1")
+                .then().statusCode(200)
+                .body("ep", equalTo("EP1"))
+                .body("profiles", is(5))
+                .body("cantileversToReview", is(1))
+                .body("unrecognized", is(2));
+        given().get("/api/quality/EP99").then().statusCode(404);
     }
 }

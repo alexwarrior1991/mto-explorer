@@ -1,9 +1,12 @@
 package com.alejandro.mtoexplorer.imports;
 
 /**
- * Lo que pasó con un fichero en una carga.
+ * Lo que pasó con un fichero en una importación.
+ *
+ * @param master LOV o PROFILE: qué maestro es (decide qué cachés hay que vaciar)
+ * @param file   el nombre del fichero
  */
-public record FileImportResult(String file, Status status, int rows, long durationMs, String detail) {
+public record FileImportResult(String master, String file, Status status, int rows, long durationMs, String detail) {
 
     public enum Status {
         /**
@@ -20,15 +23,19 @@ public record FileImportResult(String file, Status status, int rows, long durati
         MISSING
     }
 
-    static FileImportResult loaded(String file, int rows, long durationMs) {
-        return new FileImportResult(file, Status.LOADED, rows, durationMs, null);
+    public boolean loaded() {
+        return status == Status.LOADED;
     }
 
-    static FileImportResult unchanged(String file) {
-        return new FileImportResult(file, Status.UNCHANGED, 0, 0, null);
+    static FileImportResult loaded(String master, String file, int rows, long durationMs) {
+        return new FileImportResult(master, file, Status.LOADED, rows, durationMs, null);
     }
 
-    static FileImportResult missing(String file, String detail) {
-        return new FileImportResult(file, Status.MISSING, 0, 0, detail);
+    static FileImportResult unchanged(String master, String file) {
+        return new FileImportResult(master, file, Status.UNCHANGED, 0, 0, null);
+    }
+
+    static FileImportResult missing(String master, String file, String detail) {
+        return new FileImportResult(master, file, Status.MISSING, 0, 0, detail);
     }
 }
