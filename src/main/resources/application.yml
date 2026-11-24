@@ -45,10 +45,19 @@ quarkus:
       expire-after-write: 24H
 
   # --- gRPC (fase 3) -------------------------------------------------------------
-  # El servidor gRPC comparte el puerto HTTP (8090) en vez de abrir el 9000.
+  # El servidor gRPC comparte el puerto HTTP (8090) en vez de abrir el 9000: gRPC va sobre HTTP/2, y
+  # el servidor HTTP de Quarkus (Vert.x) lo entiende.
   grpc:
     server:
       use-separate-server: false
+      # Que grpcurl y la Dev UI puedan preguntar qué servicios hay (en dev ya viene encendido).
+      enable-reflection-service: true
+    # Un cliente con nombre: @GrpcClient("infrastructure"). En los tests Quarkus cambia el puerto
+    # por el del servidor de test.
+    clients:
+      infrastructure:
+        host: localhost
+        port: 8090
 
   # --- LangChain4j (fase 5) ------------------------------------------------------
   # Apagado hasta la fase 5: si no, Dev Services descargaría un modelo de varios GB al arrancar.

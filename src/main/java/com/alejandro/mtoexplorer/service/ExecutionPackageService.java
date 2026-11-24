@@ -84,6 +84,19 @@ public class ExecutionPackageService {
     }
 
     /**
+     * El resumen de un paquete, sacado de {@link #overview()} y por tanto de la caché. Llamar a
+     * {@code overview()} desde aquí pasa por su {@code @CacheResult}: Quarkus intercepta también las
+     * llamadas de un bean a sus propios métodos.
+     */
+    public Uni<EpOverview> overview(String ep) {
+        return overview().map(all -> all.stream()
+                .filter(o -> o.code().equals(ep))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("el paquete", ep))
+        );
+    }
+
+    /**
      * El paquete, o ResourceNotFoundException si no existe.
      */
     private Uni<ExecutionPackage> existing(String ep) {

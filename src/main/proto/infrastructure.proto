@@ -1,0 +1,119 @@
+// El contrato gRPC de mto-explorer. Quarkus genera las clases Java al compilar (./mvnw compile):
+// los mensajes, el stub de grpc-java y el de Mutiny, en target/generated-sources/grpc.
+syntax = "proto3";
+
+package mto.explorer.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.alejandro.mtoexplorer.grpc.v1";
+option java_outer_classname = "InfrastructureProto";
+
+// Los maestros de infraestructura: paquetes, perfiles e importaciones.
+service Infrastructure {
+  // Unaria: un paquete con sus recuentos (sale de la caché de /api/eps/overview).
+  rpc GetExecutionPackage(GetExecutionPackageRequest) returns (ExecutionPackageInfo);
+
+  // Unaria: la ficha de un perfil con sus ménsulas y sus seccionadores.
+  rpc GetProfile(ProfileKey) returns (ProfileInfo);
+
+  // Streaming del servidor: los perfiles de una búsqueda, según llegan de la base de datos.
+  rpc StreamProfiles(ProfileQuery) returns (stream ProfileSummary);
+
+  // Bidireccional: el cliente manda claves y recibe una respuesta por cada una, en el mismo orden.
+  rpc LookupProfiles(stream ProfileKey) returns (stream ProfileLookup);
+
+  // Streaming del servidor que no termina: las importaciones en directo, como el SSE.
+  rpc WatchImports(WatchImportsRequest) returns (stream ImportNotice);
+}
+
+message GetExecutionPackageRequest {
+  string code = 1;
+}
+
+message ExecutionPackageInfo {
+  string code = 1;
+  string name = 2;
+  bool enabled = 3;
+  int64 tracks = 4;
+  int64 profiles = 5;
+}
+
+// Lo que identifica un perfil: su paquete, su vía y su orden en la vía.
+message ProfileKey {
+  string ep = 1;
+  string track = 2;
+  int32 order = 3;
+}
+
+// En proto3 un campo sin "optional" no puede faltar: un double ausente es 0 y un string, "".
+// Con "optional" se distingue "no viene" (hasKp() == false) de "vale 0".
+message ProfileSummary {
+  string ep = 1;
+  string track = 2;
+  int32 order = 3;
+  string profile_id = 4;
+  optional double kp = 5;
+  optional string kp_text = 6;   // "17+858.5"
+  optional string status = 7;
+  optional string sectioning = 8;
+  optional string pole_type = 9;
+  optional string foundation = 10;
+  optional double span = 11;
+  bool to_review = 12;
+}
+
+message CantileverInfo {
+  int32 slot = 1;
+  optional string type = 2;
+  optional double stagger = 3;
+  optional double catenary_height = 4;
+  optional double cw_height = 5;
+  optional double arm_angle = 6;
+  optional string steady_arm_type = 7;
+  bool to_review = 8;
+}
+
+message ProfileInfo {
+  ProfileSummary summary = 1;
+  repeated CantileverInfo cantilevers = 2;
+  repeated string disconnectors = 3;   // sus nombres
+}
+
+message ProfileQuery {
+  string ep = 1;
+  optional string track = 2;
+  optional string kp_from = 3;   // "12+345" o metros
+  optional string kp_to = 4;
+  optional bool to_review = 5;
+}
+
+// La respuesta a una clave: el perfil o por qué no está. Un error no corta el stream.
+message ProfileLookup {
+  ProfileKey key = 1;
+  oneof result {
+    ProfileInfo profile = 2;
+    string error = 3;
+  }
+}
+
+message WatchImportsRequest {
+}
+
+enum ImportStatus {
+  IMPORT_STATUS_UNSPECIFIED = 0;   // proto3: el primer valor es el de por defecto, y debe ser 0
+  IMPORT_STATUS_LOADED = 1;
+  IMPORT_STATUS_UNCHANGED = 2;
+  IMPORT_STATUS_MISSING = 3;
+}
+
+message ImportNotice {
+  google.protobuf.Timestamp at = 1;
+  string master = 2;   // LOV o PROFILE
+  string file = 3;
+  ImportStatus status = 4;
+  int32 rows = 5;
+  int64 duration_ms = 6;
+  optional string detail = 7;
+}
