@@ -18,7 +18,6 @@ import com.alejandro.mtoexplorer.repository.criteria.ProfileSearch;
 import com.alejandro.mtoexplorer.service.model.EpOverview;
 import com.alejandro.mtoexplorer.service.model.ProfileDetail;
 import com.google.protobuf.Timestamp;
-import opennlp.tools.parser.Cons;
 
 import java.time.Instant;
 import java.util.function.Consumer;

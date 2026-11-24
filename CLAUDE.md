@@ -24,6 +24,10 @@ MTO: no llama a `mto-configuration`, ni a RabbitMQ, ni a Keycloak; solo lee los 
   (sin base de datos) y escribe en `imports/store` (una transacción por maestro).
 - **Relaciones LAZY** (README, «Relaciones»): en Hibernate Reactive no se cargan solas. Lo que lee un
   DTO se trae con `join fetch` en la consulta del repositorio, o con `Mutiny.fetch` en el servicio.
+- **gRPC** (README, «gRPC»; `docs/fase-3.md`): `grpc/` es la misma capa que `api/`, sin lógica. Los
+  errores pasan a `Status` en `GrpcExceptionMapper`; los obligatorios se validan dentro de un
+  `deferred` (en proto3 lo que no se manda llega como `""`). Un campo que puede ser null es `optional`
+  y se pone con `ifPresent`. Un número de campo publicado no se cambia ni se reutiliza.
 - **Caché** (README, «Caché en Redis»): `@CacheResult` solo en métodos de servicio que devuelven datos
   planos (records sin entidades). Cada caché nueva va en `CacheNames`, con los maestros de los que
   depende; se vacía por el evento `MastersImported`, nunca a mano desde el importador.

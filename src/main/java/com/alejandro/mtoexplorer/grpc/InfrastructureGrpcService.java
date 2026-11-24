@@ -19,7 +19,6 @@ import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 
-
 /**
  * El servicio {@code Infrastructure} del .proto. Implementa la interfaz {@link Infrastructure} que
  * Quarkus genera para Mutiny: cada rpc es un método que devuelve un {@link Uni} (respuesta única) o
@@ -45,10 +44,17 @@ public class InfrastructureGrpcService implements Infrastructure {
 
     /**
      * Unaria. Sale de la caché del resumen (Redis), como {@code GET /api/eps/overview}.
+     *
+     * <p>{@code deferred}, como en {@link #streamProfiles}: la validación corre al suscribirse, y su
+     * fallo viaja por el {@code Uni}.
      */
     @Override
     public Uni<ExecutionPackageInfo> getExecutionPackage(GetExecutionPackageRequest request) {
-        return executionPackages.overview(request.getCode()).map(ProtoMapper::toProto);
+        return Uni.createFrom().deferred(() -> {
+                    requireNotBlank(request.getCode(), "code");
+                    return executionPackages.overview(request.getCode());
+                })
+                .map(ProtoMapper::toProto);
     }
 
     /**
@@ -56,7 +62,12 @@ public class InfrastructureGrpcService implements Infrastructure {
      */
     @Override
     public Uni<ProfileInfo> getProfile(ProfileKey key) {
-        return profiles.get(key.getEp(), key.getTrack(), key.getOrder()).map(ProtoMapper::toProto);
+        return Uni.createFrom().deferred(() -> {
+                    requireNotBlank(key.getEp(), "ep");
+                    requireNotBlank(key.getTrack(), "track");
+                    return profiles.get(key.getEp(), key.getTrack(), key.getOrder());
+                })
+                .map(ProtoMapper::toProto);
     }
 
     /**
@@ -70,10 +81,7 @@ public class InfrastructureGrpcService implements Infrastructure {
     @Override
     public Multi<ProfileSummary> streamProfiles(ProfileQuery query) {
         return Multi.createFrom().deferred(() -> {
-                    if (query.getEp().isBlank()) {
-                        // Lo que en REST hace @NotBlank. Un StatusRuntimeException llega al cliente tal cual.
-                        throw Status.INVALID_ARGUMENT.withDescription("ep es obligatorio").asRuntimeException();
-                    }
+                    requireNotBlank(query.getEp(), "ep");
                     return profiles.stream(ProtoMapper.toSearch(query));
                 })
                 .onItem().transform(ProtoMapper::toSummary);
@@ -103,5 +111,16 @@ public class InfrastructureGrpcService implements Infrastructure {
                 .onFailure(ResourceNotFoundException.class)
                 .recoverWithItem(e -> ProtoMapper.notFound(key, e.getMessage()))
         );
+    }
+
+    /**
+     * Lo que en REST hace {@code @NotBlank}. En proto3 un string que no se manda llega como "", no
+     * como null. Un {@code StatusRuntimeException} llega al cliente tal cual (GrpcExceptionMapper no
+     * lo toca).
+     */
+    private static void requireNotBlank(String value, String field) {
+        if (value.isBlank()) {
+            throw Status.INVALID_ARGUMENT.withDescription(field + " es obligatorio").asRuntimeException();
+        }
     }
 }
