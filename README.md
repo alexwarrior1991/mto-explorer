@@ -19,7 +19,7 @@ consultarlos.
 MTO_DATA_DIR=/ruta/a/mto-configuration/data ./mvnw quarkus:dev
 ```
 
-- Dev UI: <http://localhost:8090/q/dev-ui>
+- Dev UI: <http://localhost:8090/q/dev-ui> (también para llamar al servicio gRPC)
 - Swagger UI: <http://localhost:8090/q/swagger-ui>
 - Salud: <http://localhost:8090/q/health>
 
@@ -39,7 +39,7 @@ Cada fase deja algo funcionando y con tests. La guía de cada una, paso a paso, 
 |---|---|---|---|
 | 1 | Cargar los Excel en PostgreSQL y servirlos por REST | Dev Services, `@ConfigMapping`, Flyway, Panache reactivo, Mutiny (`Uni`), REST, validación, OpenAPI, `@QuarkusTest` | [fase-1.md](docs/fase-1.md) |
 | 2 | Caché en Redis y avisos en directo de las importaciones | `@CacheResult`, invalidación con eventos CDI, `Multi` caliente, SSE | [fase-2.md](docs/fase-2.md) |
-| 3 | Servicio gRPC (unario y streaming) y cliente | `.proto`, `@GrpcService`, stubs Mutiny, `grpcurl` | pendiente |
+| 3 | Servicio gRPC (unario, streaming y bidireccional) y cliente | `.proto`, `@GrpcService`, stubs Mutiny, `Status`, interceptores, `@GrpcClient`, `grpcurl` | [fase-3.md](docs/fase-3.md) |
 | 4 | Recargar cuando cambia un Excel; foto diaria de calidad | `@Scheduled`, cron, ejecución concurrente | pendiente |
 | 5 | Asistente para preguntar por los maestros en lenguaje natural | LangChain4j, `@RegisterAiService`, `@Tool`, Ollama en local | pendiente |
 
@@ -51,12 +51,15 @@ Las dependencias de todas las fases ya están en el `pom.xml`. LangChain4j está
 Por capas: cada una solo conoce la de debajo.
 
 ```
-            HTTP
+            HTTP y gRPC (los dos en el 8090)
              │
   api/            recursos REST: leen y validan parámetros, llaman a un servicio, devuelven DTO
   ├── dto/        el contrato JSON (records)
   ├── mapper/     entidad / modelo → DTO (formato: PK "17+858.5", tangente "1:9"…)
   └── error/      excepciones → application/problem+json (RFC 9457)
+  grpc/           el servicio gRPC (la misma capa que api/): @GrpcService, ProtoMapper,
+                  excepciones → Status, y un interceptor que escribe cada llamada en el log.
+                  El contrato: src/main/proto; las clases generadas, en grpc.v1 (target/)
              │
   service/        lógica de negocio; abren la sesión reactiva (@WithSession)
   ├── model/      lo que devuelven (Page, ProfileDetail, EpQuality…)
@@ -78,7 +81,7 @@ Por capas: cada una solo conoce la de debajo.
   └── MasterImportService   qué importar y cuándo; puente bloqueante → reactivo
 
   config/  configuración tipada (mto.*)      kp/    puntos kilométricos
-  grpc/    fase 3                            jobs/  fase 4          ai/  fase 5
+  jobs/    fase 4                            ai/    fase 5
 ```
 
 `src/main/resources/db/migration/` tiene las migraciones Flyway, y `docs/maestros.md` las hojas y
@@ -140,6 +143,27 @@ curl -N localhost:8090/api/loads/events      # en una terminal
 curl -X POST localhost:8090/api/loads         # en otra
 ```
 
+### gRPC
+
+`src/main/proto/infrastructure.proto` define el servicio `mto.explorer.v1.Infrastructure`, que
+comparte el puerto 8090 con REST:
+
+| rpc | Tipo | Equivale a |
+|---|---|---|
+| `GetExecutionPackage` | unaria | una fila de `GET /api/eps/overview` (de la caché) |
+| `GetProfile` | unaria | `GET /api/profiles/{ep}/{track}/{order}` |
+| `StreamProfiles` | streaming del servidor | `GET /api/profiles/stream` |
+| `LookupProfiles` | bidireccional | un `GetProfile` por cada clave que manda el cliente; la que no existe responde `error` y el stream sigue |
+| `WatchImports` | streaming del servidor, sin fin | `GET /api/loads/events` |
+
+Los errores salen como `Status` (`GrpcExceptionMapper`): `NOT_FOUND`, `INVALID_ARGUMENT` o
+`INTERNAL` sin detalle. Con el servicio de reflexión encendido, `grpcurl` lo descubre solo:
+
+```bash
+grpcurl -plaintext localhost:8090 list
+grpcurl -plaintext -d '{"ep":"EP11A","track":"TRACK 1","order":3}' localhost:8090 mto.explorer.v1.Infrastructure/GetProfile
+```
+
 ### Dónde hay `Multi`
 
 - `GET /api/profiles/stream`: los perfiles en streaming (NDJSON). `ProfileService.stream` pide
@@ -152,6 +176,8 @@ curl -X POST localhost:8090/api/loads         # en otra
   `LoadResource.events` lo junta con el evento `connected` y el latido con
   `Multi.createBy().merging()`. Los dos anteriores son **fríos**: cada cliente recibe todo desde el
   principio.
+- gRPC: `StreamProfiles` y `WatchImports` devuelven esos mismos `Multi`, y `LookupProfiles` además
+  **recibe** uno (las claves del cliente) y lo transforma con `transformToUniAndConcatenate`.
 
 ### Tests
 
@@ -165,6 +191,7 @@ curl -X POST localhost:8090/api/loads         # en otra
 | Multi caliente | `ImportFeedTest` | `AssertSubscriber` de Mutiny |
 | API | `ExplorerApiTest`, `SectioningApiTest`, `ProblemDetailsTest`, `ProfileStreamTest` | `@QuarkusTest` + RestAssured |
 | SSE | `ImportEventsSseTest` | `HttpClient` de Java leyendo el stream línea a línea |
+| gRPC | `InfrastructureGrpcServiceTest` (y `ProtoMapperTest`, `GrpcExceptionMapperTest`, unitarios) | `@QuarkusTest` + `@GrpcClient`: el cliente de Mutiny llama al servidor por la red |
 
 ## Imagen nativa
 
